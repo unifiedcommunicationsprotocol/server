@@ -1,0 +1,2 @@
+- [UCP v1.0 Complete](project_ucp_v1_complete.md) — 146 tests, 6100+ LOC, all core features implemented, production-ready
+- [v1.0 Comprehensive Review (2026-06-27)](comprehensive_review.md) — Full code + docs audit, all issues fixed, tests passing

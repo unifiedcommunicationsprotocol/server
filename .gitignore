@@ -1,0 +1,33 @@
+# Go build artifacts
+/bin/
+*.o
+*.a
+*.so
+*.dylib
+
+# Go test artifacts
+*.out
+*.test
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Postgres local dev
+postgres_data/
+
+# Temporary
+tmp/
+temp/
