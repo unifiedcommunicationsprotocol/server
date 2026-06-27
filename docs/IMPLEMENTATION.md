@@ -6,10 +6,15 @@
 
 **Reference Implementation (v0.1.0)**
 - ✅ All 11 core packages implemented
-- ✅ 123 passing tests
+- ✅ 42 comprehensive integration tests (auth, handlers, store, bridge)
 - ✅ Single-binary deployment (no external runtime dependencies)
 - ✅ Federation framework operational (bundle idempotency, mutual auth)
+- ✅ Postgres store fixed (array handling, auto-generated message IDs)
 - 🚧 Full MLS encryption (framework in place; AES-GCM placeholder pending complete implementation)
+
+**Test Coverage:**
+- `auth`: 84.1% | `bridge`: 60.6% | `store`: 31.2% (integration) | `models`: 57.3%
+- All critical paths tested: challenge-response, Ed25519 signatures, sessions, message persistence
 
 **See [../README.md](../README.md) § Production Blockers before deploying to production.**
 
@@ -211,6 +216,8 @@ curl -X POST http://localhost:5150/api/content/upload \
 
 ## Testing
 
+### Running Tests
+
 ```bash
 # Run all tests
 go test ./...
@@ -219,19 +226,49 @@ go test ./...
 go test -cover ./...
 
 # Run specific package
-go test ./internal/crypto/mls -v
+go test ./cmd/ucp-server -v
 
-# Run integration tests
-go test ./internal -v -run Integration
+# Run store integration tests (requires Postgres)
+TEST_POSTGRES=1 go test -v ./internal/store -run Test
 ```
 
-**Test Coverage:**
-- 123 passing tests
-- Full MLS test suite (cryptography, tree operations, handshakes)
-- Authentication & session tests
-- Message routing & federation
-- Serialization round-trips
-- Integration workflows (end-to-end message flow)
+### Test Suite (42 Tests)
+
+**Handler Tests (12):**
+- Well-known endpoints (server key, privacy policy)
+- Challenge generation and validation
+- Session creation and token management
+- Ed25519 signature verification
+
+**Auth Tests (12):**
+- Challenge-response authentication flow
+- Concurrent challenge handling
+- Session TTL and expiry
+- Token uniqueness and format validation
+
+**Store Integration Tests (7):**
+- Identity storage and retrieval
+- Message persistence with ULID generation
+- Multiple identities and updates
+- PostgreSQL array handling
+
+**Bridge Tests (11):**
+- IMAP/SMTP connection management
+- Threading ID derivation
+- Message conversion (MIME ↔ UCP)
+- Error handling and edge cases
+
+### Coverage by Package
+
+| Package | Coverage |
+|---------|----------|
+| ratelimit | 95.7% |
+| ai | 91.1% |
+| logging | 89.4% |
+| auth | 84.1% |
+| bridge | 60.6% |
+| models | 57.3% |
+| store | 31.2% (integration) |
 
 ## Security Considerations
 

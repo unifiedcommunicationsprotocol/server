@@ -164,8 +164,22 @@ func handleSession(am *auth.Manager, cs *auth.ChallengeStore, s *store.Store) ht
 			return
 		}
 
+		// Fetch user's identity to get public key for verification
+		identity, err := s.GetIdentity(r.Context(), req.Address)
+		if err != nil {
+			http.Error(w, "user not found", http.StatusNotFound)
+			return
+		}
+
+		// Decode the identity key from base64
+		pubKeyBytes, err := base64.StdEncoding.DecodeString(identity.IdentityKey)
+		if err != nil {
+			http.Error(w, "invalid identity key", http.StatusInternalServerError)
+			return
+		}
+
 		// Verify signature over challenge
-		if err := auth.VerifyChallengeResponse(challenge, nil, req.Signature); err != nil {
+		if err := auth.VerifyChallengeResponse(challenge, pubKeyBytes, req.Signature); err != nil {
 			http.Error(w, "invalid signature", http.StatusUnauthorized)
 			return
 		}

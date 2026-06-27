@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -118,12 +119,83 @@ type config struct {
 }
 
 func loadConfig() config {
+	dbURL := getEnv("DATABASE_URL", "postgres://localhost/ucp")
+	// Convert postgres:// URL to keyword/value format for pq
+	// postgres://user:pass@host:port/db?sslmode=disable → user=X password=Y host=Z port=N dbname=...
+	if strings.HasPrefix(dbURL, "postgres://") {
+		dbURL = convertPgURL(dbURL)
+	}
+	fmt.Printf("DEBUG: Final DSN for pq: %s\n", dbURL)
 	return config{
 		Listen:       getEnv("API_PORT", ":5150"),
-		DatabaseURL: getEnv("DATABASE_URL", "postgres://localhost/ucp"),
+		DatabaseURL: dbURL,
 		ServerDomain: getEnv("API_URL", "localhost:5150"),
 		ServerKey:    getEnv("UCP_SERVER_KEY", ""),
 	}
+}
+
+func convertPgURL(pgURL string) string {
+	// postgres://user:pass@host:port/db?sslmode=disable
+	// → user=user password=pass host=host port=port dbname=db sslmode=disable
+	pgURL = strings.TrimPrefix(pgURL, "postgres://")
+
+	var user, pass, host, port, dbname, params string
+
+	// Extract user:pass@
+	if idx := strings.LastIndex(pgURL, "@"); idx != -1 {
+		userpass := pgURL[:idx]
+		pgURL = pgURL[idx+1:]
+		if idx2 := strings.Index(userpass, ":"); idx2 != -1 {
+			user = userpass[:idx2]
+			pass = userpass[idx2+1:]
+		} else {
+			user = userpass
+		}
+	}
+
+	// Extract host:port
+	var hostport string
+	if idx := strings.Index(pgURL, "/"); idx != -1 {
+		hostport = pgURL[:idx]
+		pgURL = pgURL[idx+1:]
+	} else if idx := strings.Index(pgURL, "?"); idx != -1 {
+		hostport = pgURL[:idx]
+		pgURL = pgURL[idx:]
+	} else {
+		hostport = pgURL
+		pgURL = ""
+	}
+
+	if idx := strings.Index(hostport, ":"); idx != -1 {
+		host = hostport[:idx]
+		port = hostport[idx+1:]
+	} else {
+		host = hostport
+		port = "5432"
+	}
+
+	// Extract dbname and params
+	if idx := strings.Index(pgURL, "?"); idx != -1 {
+		dbname = pgURL[:idx]
+		params = pgURL[idx+1:]
+	} else {
+		dbname = pgURL
+	}
+
+	// Build keyword/value string
+	result := ""
+	if user != "" {
+		result += "user=" + user + " "
+	}
+	if pass != "" {
+		result += "password=" + pass + " "
+	}
+	result += "host=" + host + " port=" + port + " dbname=" + dbname
+	if params != "" {
+		result += " " + params
+	}
+
+	return result
 }
 
 func getEnv(key, defaultVal string) string {

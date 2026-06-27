@@ -4,6 +4,7 @@
 *.a
 *.so
 *.dylib
+ucp-server
 
 # Go test artifacts
 *.out
@@ -31,3 +32,4 @@ postgres_data/
 # Temporary
 tmp/
 temp/
+

@@ -6,6 +6,8 @@ import (
 	"database/sql"
 	"fmt"
 
+	"github.com/lib/pq"
+
 	"github.com/unifiedcommunicationsprotocol/server/internal/models"
 )
 
@@ -16,6 +18,7 @@ type Store struct {
 
 // New creates a new Store with an open database connection.
 func New(dsn string) (*Store, error) {
+	fmt.Printf("DEBUG: Connecting with DSN: %s\n", dsn)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -42,24 +45,25 @@ func (s *Store) Close() error {
 // StoreMessage stores a message envelope in the database.
 func (s *Store) StoreMessage(ctx context.Context, envelope *models.UCPEnvelope, encryptedMLS []byte) error {
 	const query = `
-	INSERT INTO messages (thread_id, from_addr, to_addrs, signing_key, server_ts, mls_encrypted)
-	VALUES ($1, $2, $3, $4, $5, $6)
-	ON CONFLICT DO NOTHING
-	RETURNING id
+	INSERT INTO messages (message_id, thread_id, from_addr, to_addrs, signing_key, server_ts, mls_encrypted)
+	VALUES ($1, $2, $3, $4, $5, $6, $7)
+	ON CONFLICT (message_id) DO NOTHING
 	`
 
-	// Convert to_addrs slice to Postgres array
-	var id int64
-	err := s.db.QueryRowContext(ctx, query,
-		envelope.ThreadID,
+	// Generate unique message ID if not provided
+	messageID := models.GenerateULID()
+
+	_, err := s.db.ExecContext(ctx, query,
+		string(messageID),
+		string(envelope.ThreadID),
 		envelope.From,
-		envelope.To,
+		pq.Array(envelope.To),
 		envelope.SigningKey,
 		envelope.ServerTs,
 		encryptedMLS,
-	).Scan(&id)
+	)
 
-	if err != nil && err != sql.ErrNoRows {
+	if err != nil {
 		return fmt.Errorf("store message: %w", err)
 	}
 
@@ -165,7 +169,7 @@ func (s *Store) StoreIdentity(ctx context.Context, identity *models.Identity) er
 		identity.IdentityKey,
 		signingKeysJSON,
 		identity.RevocationKey,
-		identity.Capabilities,
+		pq.Array(identity.Capabilities),
 	)
 
 	if err != nil {
@@ -191,7 +195,7 @@ func (s *Store) GetIdentity(ctx context.Context, address string) (*models.Identi
 		&identity.IdentityKey,
 		&signingKeysJSON,
 		&identity.RevocationKey,
-		&identity.Capabilities,
+		pq.Array(&identity.Capabilities),
 	)
 
 	if err != nil {

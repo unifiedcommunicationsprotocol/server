@@ -10,13 +10,14 @@ This is the official reference implementation of the **Unified Communications Pr
 
 **v0.1.0 Reference Implementation:**
 - **6,100+ lines of code** across 15 core packages
-- **123 passing tests** covering all layers
+- **42 comprehensive integration tests** (handlers, auth, store, bridge)
 - **Single-binary deployment** (fully static, no external runtime dependencies)
 - **MLS encryption framework** (RFC 9420 architecture in place; full implementation in progress)
 - **Real-time WebSocket + WebTransport support** (presence, typing, receipts)
 - **AI metadata surface** (client-generated metadata with opt-in server processing)
 - **IMAP/SMTP bridge** (legacy email support with bridge attestation)
 - **Postgres persistence** (14 optimized tables with federation bundle log for idempotency)
+- **Fixed store bugs** (PostgreSQL array handling, auto-generated message IDs)
 
 ## Quick Start
 

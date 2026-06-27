@@ -2,12 +2,28 @@
 package models
 
 import (
+	"crypto/rand"
+	"encoding/base32"
 	"encoding/json"
+	"fmt"
 	"time"
 )
 
 // ULID is a 128-bit, lexicographically sortable unique identifier.
 type ULID string
+
+// GenerateULID creates a new ULID (timestamp + random bytes).
+func GenerateULID() ULID {
+	// ULID format: timestamp (48 bits) + randomness (80 bits)
+	// For simplicity, use timestamp + random string
+	timestamp := time.Now().UnixMilli()
+	randomBytes := make([]byte, 10)
+	rand.Read(randomBytes)
+
+	// Encode as base32 for readability (similar to actual ULID)
+	randomStr := base32.StdEncoding.EncodeToString(randomBytes)[:16]
+	return ULID(fmt.Sprintf("%013d%s", timestamp, randomStr))
+}
 
 // Message represents a UCP message (email, chat, etc.).
 type Message struct {
