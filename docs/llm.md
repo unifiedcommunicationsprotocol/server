@@ -104,6 +104,7 @@ server/
 ## Hard Constraints
 
 - **CRITICAL: Never run git commands from the project root's parent directories.** Always `cd` into the project directory first before any git operation. Git commands run from parent paths can pollute state or affect unrelated repos.
+- **All Claude Code memories MUST be saved within this project directory only** (e.g., `.claude/memory/`, `docs/memory/`, or similar). Never save to global/external locations like `~/.claude-me/...`. Memories are project-local and version-controlled.
 - Never modify database migration files by hand — use schema versioning tool only
 - Never add external dependencies without explicit approval (keep binary lean)
 - Never commit secrets, tokens, credentials, or private keys
