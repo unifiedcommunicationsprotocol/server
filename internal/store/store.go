@@ -122,14 +122,14 @@ func (s *Store) GetThreadMessages(ctx context.Context, threadID models.ULID) ([]
 	var messages []*models.UCPEnvelope
 	for rows.Next() {
 		var envelope models.UCPEnvelope
-		var id models.ULID
+		var id int64
 		var to []string
 
 		if err := rows.Scan(
 			&id,
 			&envelope.ThreadID,
 			&envelope.From,
-			&to,
+			pq.Array(&to),
 			&envelope.SigningKey,
 			&envelope.ServerTs,
 		); err != nil {
@@ -232,6 +232,7 @@ func (s *Store) GetSession(ctx context.Context, token string) (address string, e
 	SELECT address FROM sessions
 	WHERE token = $1
 	AND expires_at > NOW()
+	AND revoked_at IS NULL
 	`
 
 	err = s.db.QueryRowContext(ctx, query, token).Scan(&address)
