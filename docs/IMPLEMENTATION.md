@@ -1,14 +1,17 @@
 # UCP Server Implementation Guide
 
-> A complete, production-ready reference implementation of the Unified Communications Protocol (UCP) in pure Go.
+> A reference implementation of the Unified Communications Protocol (UCP) in pure Go, demonstrating the architecture and patterns for building UCP-compliant servers.
 
 ## Status
 
-✅ **Complete Implementation (v0.1.0)**
-- All 11 core packages implemented
-- 123 passing tests
-- Single-binary deployment
-- Ready for federated deployment
+**Reference Implementation (v0.1.0)**
+- ✅ All 11 core packages implemented
+- ✅ 123 passing tests
+- ✅ Single-binary deployment (no external runtime dependencies)
+- ✅ Federation framework operational (bundle idempotency, mutual auth)
+- 🚧 Full MLS encryption (framework in place; AES-GCM placeholder pending complete implementation)
+
+**See [../README.md](../README.md) § Production Blockers before deploying to production.**
 
 ## Architecture
 
@@ -18,7 +21,7 @@
 |---------|---------|--------|
 | `internal/models` | UCP protocol types (Envelope, Message, Attachment, Identity) | ✅ Complete |
 | `internal/auth` | Challenge-response auth, session tokens, Ed25519 signing | ✅ Complete |
-| `internal/crypto/mls` | RFC 9420 Messaging Layer Security (Phases 1-5) | ✅ Complete |
+| `internal/crypto/mls` | MLS encryption framework (RFC 9420 architecture); full implementation in progress | 🚧 In Progress |
 | `internal/identity` | DNS-anchored identity, keypair management | ✅ Complete |
 | `internal/store` | Postgres persistence for all entities | ✅ Complete |
 | `internal/transport` | WebSocket/HTTP keepalive, connection management | ✅ Complete |
@@ -76,34 +79,41 @@ Bridge
 └── bridge_threading_map (SMTP Message-ID ↔ UCP ULID)
 ```
 
-### MLS Implementation (5 Phases)
+### MLS Implementation Status
+
+**Current:** Framework + AES-128-GCM placeholder pending full RFC 9420 implementation
+
+Currently, the server uses AES-128-GCM for envelope encryption while the pure-Go RFC 9420 MLS implementation is being built in-house (see ADR-009). Once complete, the following will be fully implemented:
 
 **Phase 1: Serialization & Types**
-- TLS wire format encoder/decoder (RFC 9420)
-- MLS ciphersuite: `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519`
-- Credential binding, KeyPackage format
+- TLS wire format encoder/decoder (RFC 9420 §2)
+- MLS ciphersuite: `MLS_128_DHKEMX25519_AES128GCM_SHA256_Ed25519` (primary), `MLS_256_DHKEMP384_AES256GCM_SHA384_P384` (secondary)
+- Credential binding (Ed25519 identity key signature over signing key)
+- KeyPackage format and validation
 
 **Phase 2: Tree Operations**
-- Binary tree for group members
-- Add/remove/update members with epoch advancement
-- Tree hash computation (SHA-256)
+- Binary tree for group members and key derivation
+- Add/remove/update proposals with epoch advancement
+- Tree hash computation per RFC 9420 §7.1
+- Ratchet tree consistency
 
-**Phase 3: Encryption**
-- AES-128-GCM per-epoch encryption
-- Sender data encryption with member identification
-- Key derivation from epoch secret
+**Phase 3: Encryption & Keys**
+- AES-128-GCM per-epoch authenticated encryption
+- Sender data encryption and key derivation
+- Epoch secret and confirmation key schedules
+- Forward secrecy through key deletion after use
 
-**Phase 4: Proposals**
-- Add (new KeyPackage)
-- Update (member key rotation)
-- Remove (member departure)
-- Proposal references (SHA-256 hashing for deduplication)
-
-**Phase 5: Handshakes**
+**Phase 4: Proposals & Commits**
+- Proposal types: Add (new member), Update (key rotation), Remove (departure)
 - Commit messages bundling proposals
-- Welcome messages for new members
-- Confirmation tags per RFC 9420 §8.5
-- Group secret sharing
+- Proposal references (SHA-256) for deduplication
+- Welcome messages with thread metadata extension
+
+**Phase 5: Integration**
+- Client recovery after crash (bundle idempotency)
+- New thread creation with Welcome + first message atomicity
+- Member rotation (signing key changes trigger MLS Update)
+- Group state synchronization across server boundaries
 
 ## Running the Server
 

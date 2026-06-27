@@ -35,6 +35,8 @@
 
 ```
 server/
+├── CLAUDE.md                # → symlink to docs/llm.md (AI navigation guide)
+├── AGENTS.md                # → symlink to docs/llm.md (same as CLAUDE.md)
 ├── cmd/
 │   └── ucp-server/          # Binary entry point
 ├── internal/
@@ -49,10 +51,16 @@ server/
 │   ├── auth/                # Session tokens, challenge-response, key management
 │   └── models/              # UCP types (Message, Envelope, Identity, etc.)
 ├── spec/                    # UCP protocol specification (read-only)
-├── docs/                    # Architecture, decisions, API docs
+├── docs/
+│   ├── llm.md               # This file — the authoritative source (loaded in every session)
+│   ├── architecture.md      # System design, data flows, component structure
+│   ├── decisions.md         # Architecture decision records (ADRs)
+│   └── IMPLEMENTATION.md    # Package status, HTTP endpoints, database schema
 ├── go.mod / go.sum          # Dependencies
 └── Makefile                 # Build, test, lint targets
 ```
+
+**Note:** `CLAUDE.md` and `AGENTS.md` are symlinks to `docs/llm.md`. Edit `docs/llm.md` directly; the symlinks ensure the AI navigation guide loads in every session.
 
 ---
 
@@ -95,6 +103,7 @@ server/
 
 ## Hard Constraints
 
+- **CRITICAL: Never run git commands from the project root's parent directories.** Always `cd` into the project directory first before any git operation. Git commands run from parent paths can pollute state or affect unrelated repos.
 - Never modify database migration files by hand — use schema versioning tool only
 - Never add external dependencies without explicit approval (keep binary lean)
 - Never commit secrets, tokens, credentials, or private keys

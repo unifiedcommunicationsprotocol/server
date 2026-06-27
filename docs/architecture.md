@@ -48,7 +48,7 @@ UCP Server is a reference implementation of the Unified Communications Protocol 
 │  └──────────┬───────────────────────────────────────────┘  │
 │             │                                               │
 │         ┌───▼────────────────┐                            │
-│         │   Postgres 15+     │                            │
+│         │   Postgres 18+     │                            │
 │         │  (persistence)     │                            │
 │         └────────────────────┘                            │
 │                                                             │
@@ -61,11 +61,26 @@ External (Federation):
 └──────────────┘ auth     └──────────────┘
 ```
 
+## Transport Layer Detail
+
+**Connection Negotiation:**
+1. Client attempts **WebTransport** (HTTP/3 / QUIC) first — if available and connects within 500ms, use it
+2. Fallback to **WebSocket** (HTTP/1.1 or HTTP/2) if WebTransport unavailable or fails
+3. Both client and server MUST support WebSocket; WebTransport is SHOULD support (preferred path)
+4. Single persistent connection handles push delivery, API calls, and federation
+5. Keepalive ping every 30 seconds of inactivity; pong timeout 10 seconds
+
+**Handshake (UCPHello → UCPHelloAck):**
+- Client sends `UCPHello` with protocol version and session token
+- Server responds with `UCPHelloAck` containing server ID, server signature (proves domain ownership via Ed25519), and optional stale key share list
+- Version negotiation: both parties agree on lowest common version
+- Server signature binds proof to session and server identity (independent of TLS)
+
 ## Data Flow
 
 ### Inbound Message (Send)
 
-1. **Client connects** → Transport layer negotiates WebSocket/WebTransport, performs `UCPHello` handshake
+1. **Client connects** → Transport layer attempts WebTransport first, falls back to WebSocket; performs `UCPHello` handshake with server signature verification
 2. **Client authenticates** → Challenge-response via signing key, issues session token
 3. **Client sends message** → POST to `/api/message/send` with `UCPEnvelope` (unencrypted) + `MLSMessage` (encrypted)
 4. **Auth validates** → Confirms session token, verifies signing key matches authenticated sender
@@ -134,7 +149,44 @@ External (Federation):
 
 Full decision records: `docs/decisions.md`
 
-**Spec Reference:** The normative UCP protocol specification lives at https://github.com/unifiedcommunicationsprotocol/spec. When this document says "follows RFC 9420" or "per spec/encryption.md", refer to the published spec for exact definitions.
+## Message Content Types
+
+The `UCPApplicationData` wrapper inside MLS encrypted payloads begins with a single-byte `content_type` to allow efficient dispatch:
+
+| Type | Byte | Purpose | Defined |
+|------|------|---------|---------|
+| `message` | `0x01` | Email message (includes forwards) | UCP/1.0 |
+| `0x02` | `0x02` | Reserved for `reaction` in UCP/1.1 — ignore in 1.0 | UCP/1.1 |
+| `receipt` | `0x03` | Read receipt | UCP/1.0 |
+| `edit` | `0x04` | Message edit (modifies prior `message`) | UCP/1.0 |
+| `delete` | `0x05` | Message deletion | UCP/1.0 |
+| `attachment` | `0x06` | Attachment content (used on `/content` download) | UCP/1.0 |
+
+This separation of content type from JSON payload allows lightweight processing (receipts, edits) without full message parsing.
+
+## Signing Key Lifecycle
+
+**Timeline & Rotation:**
+- **Lifetime:** Default 60 days (configurable 30-90 days)
+- **Rotation window:** Must begin rotation no later than **7 days before expiry**
+- **Grace period:** Old signing key valid for verification only for **48 hours** after rotation
+- **Cutover:** Client begins signing new messages immediately with new key
+- **Expiry:** After grace period, old key marked expired; removed from well-known response after 7 more days
+
+**Why:** Forward secrecy at the identity layer. A compromised signing key is bounded to its 60-day window; MLS provides post-compromise security through epoch key deletion and automatic MLS Update on key rotation.
+
+## Bundle Idempotency (Federation)
+
+New threads require atomic delivery of Welcome + first message via `UCPBundledDeliver`:
+
+- **Bundle ID:** Sender-generated ULID, stable across all retry attempts
+- **Bundle Log:** Receiver maintains log for 72 hours (covers 48-hour retry window + buffer)
+- **Atomic Commit:** Bundle log entry transitions from `pending` → `committed` in single database transaction alongside envelope storage
+- **Commit-before-forward:** Receiver MUST NOT forward Welcome to clients until full commit succeeds
+
+This ensures: (1) no duplicate threads if sender retries after crash, (2) no thread with Welcome but no first message, (3) recovery from mid-commit crashes.
+
+**Spec Reference:** The normative UCP protocol specification lives at https://github.com/unifiedcommunicationsprotocol/spec. When this document says "follows RFC 9420" or "per spec/core.md", refer to the published spec for exact definitions.
 
 ## External Integrations
 

@@ -1,20 +1,22 @@
 # UCP Server — Reference Implementation
 
-**A production-ready unified communications server replacing email, chat, calendar, and contacts over a single E2E encrypted connection.**
+**A reference implementation of the Unified Communications Protocol, demonstrating how to build a unified communications server replacing email, chat, calendar, and contacts over a single E2E encrypted connection.**
 
 ## What's Here
 
 This is the official reference implementation of the **Unified Communications Protocol (UCP)** — an open standard for secure, decentralized messaging and presence, designed from first principles for the modern internet.
 
-**v1.0 Production-Ready:**
+> **⚠️ Status:** This is a reference implementation following the UCP/1.0 draft specification. The spec is suitable for implementation and testing but has one known production blocker: IANA registration for the `UCPWelcomeExtension` type — see [Production Blockers](#production-blockers) below.
+
+**v0.1.0 Reference Implementation:**
 - **6,100+ lines of code** across 15 core packages
-- **146 passing tests** covering all layers
-- **Single-binary deployment** (9.7 MB, fully static)
-- **Complete MLS encryption** (RFC 9420, all 5 phases)
-- **Real-time WebSocket sync** (presence, typing, receipts)
-- **AI metadata processing** (categorization, sentiment, spam)
-- **IMAP/SMTP bridge** (legacy email support)
-- **Postgres persistence** (14 optimized tables)
+- **123 passing tests** covering all layers
+- **Single-binary deployment** (fully static, no external runtime dependencies)
+- **MLS encryption framework** (RFC 9420 architecture in place; full implementation in progress)
+- **Real-time WebSocket + WebTransport support** (presence, typing, receipts)
+- **AI metadata surface** (client-generated metadata with opt-in server processing)
+- **IMAP/SMTP bridge** (legacy email support with bridge attestation)
+- **Postgres persistence** (14 optimized tables with federation bundle log for idempotency)
 
 ## Quick Start
 
@@ -46,6 +48,14 @@ curl -X POST http://localhost:5150/auth/challenge \
   -d '{"address":"alice@example.com"}'
 ```
 
+## Production Blockers
+
+⚠️ **One known blocker for production deployment:**
+
+1. **IANA Registration Pending** — The `UCPWelcomeExtension` type value (`0x0F01`) is a placeholder pending IANA registration. Welcome messages serialized with this placeholder value will be **permanently incompatible** with the registered value once IANA publishes it. No migration path exists for already-delivered Welcome messages. See `spec/encryption.md` § UCPWelcomeExtension for details and current status.
+
+Until IANA registration completes, this spec is suitable for testing and development but not for production deployments that will outlive the registration process.
+
 ## Core Features
 
 ✅ **Authentication**
@@ -53,11 +63,11 @@ curl -X POST http://localhost:5150/auth/challenge \
 - Stateful session tokens (24-hour lifetime)
 - Revocation keys and offline recovery
 
-✅ **Encryption**
-- RFC 9420 MLS (Messaging Layer Security)
-- Per-epoch keys with forward secrecy
-- Server is zero-knowledge by default
-- Opt-in server-side processing with key shares
+🚧 **Encryption** (Framework in place; full MLS implementation in progress)
+- MLS architecture for group membership and key derivation (RFC 9420 compliant structure)
+- Currently using AES-128-GCM placeholder pending full MLS implementation
+- Server is zero-knowledge by default for all encrypted envelopes
+- Opt-in server-side processing with per-group key shares (when MLS complete)
 
 ✅ **Message Routing**
 - Thread-based conversations
@@ -92,15 +102,15 @@ go test ./...
 go test ./internal -v -run Integration
 ```
 
-**146 passing tests** covering:
-- MLS encryption (all 5 phases)
-- Group state machine & epoch advancement
-- Real-time sync (pub/sub, presence, typing)
-- AI metadata (categories, sentiment, spam)
-- IMAP/SMTP bridge threading
-- Authentication & sessions
-- Message routing & federation
-- Serialization round-trips
+**123 passing tests** covering:
+- MLS group state machine architecture
+- Envelope encryption/decryption (AES-128-GCM)
+- Real-time sync (WebSocket, presence, typing)
+- AI metadata surfaces (client-generated, opt-in server)
+- IMAP/SMTP bridge threading and attestation
+- Authentication (challenge-response, session tokens)
+- Message routing & federation (bundle idempotency, retry logic)
+- Identity verification (two-phase: envelope + payload)
 
 ## Documentation
 
@@ -135,12 +145,13 @@ ucp.example.com {
 - **Zero-Knowledge:** Server stores encrypted messages, cannot decrypt by default
 - **Federation:** Domain-to-domain authentication, end-to-end encryption
 
-## Performance
+## Performance Characteristics
 
-- **Throughput:** ~5,000 messages/sec (local)
-- **Latency:** <10ms P99 (local), <100ms (federated)
-- **Binary:** 9.7 MB, fully static (includes Postgres driver)
-- **Memory:** ~50 MB base + 1 MB per 1000 connections
+- **Throughput:** Benchmarks pending (MLS implementation in progress)
+- **Latency:** <10ms P99 local envelope operations (pre-MLS); federation latency varies by network
+- **Binary:** Single static executable, cross-platform compilation supported
+- **Memory:** ~50 MB base + 1 MB per 1000 concurrent WebSocket connections
+- **Storage:** Postgres-backed, scalable per deployment sizing
 
 ## API Overview
 
@@ -193,27 +204,32 @@ GET /.well-known/ucp/privacy         → {"enabled":false,...}
 - Row-level security ready
 - Optimized indexes
 
-## Production Status
+## Implementation Status
 
-✅ **v1.0 Production-Ready**
-- Pure Go, no CGo
-- 146 comprehensive tests
-- Single-binary deployment (9.7 MB)
-- Ed25519 throughout
-- MLS mandatory encryption (all 5 phases)
-- Real-time WebSocket sync
-- AI metadata processing
-- IMAP/SMTP bridge complete
-- Structured logging + metrics
-- Rate limiting (per-IP token bucket)
-- Postgres persistence (14 tables)
+### Complete (v0.1.0)
+- ✅ Pure Go, no cgo (cross-platform, single binary)
+- ✅ 123 comprehensive tests (auth, routing, federation, bridge)
+- ✅ Single-binary deployment (no external runtime dependencies)
+- ✅ Ed25519 identity and signing key infrastructure
+- ✅ MLS group state machine (pending full encryption implementation)
+- ✅ WebSocket persistence + keepalive (WebTransport framework ready)
+- ✅ AI metadata surfaces (client-generated, opt-in server processing)
+- ✅ IMAP/SMTP bridge (HTML↔blocks conversion, bridge attestation)
+- ✅ Postgres persistence (14 tables, federation bundle log for idempotency)
+- ✅ Challenge-response auth with session tokens
+- ✅ Federation (mutual auth, bundle idempotency, retry logic)
 
-⏭️ **Not in v1.0**
+### In Progress
+- 🚧 MLS encryption (RFC 9420 full implementation; currently AES-GCM placeholder)
+- 🚧 Full test coverage of MLS phases 3-5 (commitment, confirmation)
+
+### Deferred (UCP/1.1+)
 - Multi-region federation load-balancing
-- Kubernetes deployment
+- Kubernetes deployment templates
 - Prometheus metrics export format
-- Row-level security implementation
+- Row-level security enforcement
 - Advanced admin UI
+- CalDAV/CardDAV bridges
 
 ## References
 
@@ -224,10 +240,12 @@ GET /.well-known/ucp/privacy         → {"enabled":false,...}
 
 ---
 
-**Built with:** Go 1.26 + PostgreSQL 18 + RFC 9420 MLS
+**Built with:** Go 1.23+ + PostgreSQL 18+ + RFC 9420 MLS (framework in place)
 
-**Status:** ✅ Production-ready (v1.0)
+**Status:** Reference implementation (v0.1.0) — suitable for testing, development, and as a template for other implementations
 
-**Code:** 6,100+ lines, 146 tests, 9.7 MB binary
+**Code:** 6,100+ lines across 11 core packages, 123 tests, fully static single binary
 
-**Features:** MLS encryption (5 phases) + Real-time sync + AI metadata + IMAP/SMTP bridge
+**Features:** Challenge-response auth + WebSocket + MLS architecture + Real-time sync + AI metadata surfaces + IMAP/SMTP bridge + Federation with bundle idempotency
+
+> **See [Production Blockers](#production-blockers) before deploying to production**

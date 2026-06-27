@@ -67,8 +67,8 @@ Go `net/http` stdlib. WebSocket upgrade is built-in; federation connections are 
 Messages must survive server restarts and network partitions. Postgres is ubiquitous, battle-tested, and offers row-level security constraints for multi-tenancy. SQLite is unsuitable for a network service (connection pooling, concurrent writes under load). Managed databases (RDS, Cloud SQL) introduce vendor lock-in contrary to "self-hostable" principle.
 
 **Options Considered:**
-- **Postgres 15+** (self-hosted) — mature, JSONB, row-level constraints; operators must manage backups
-- **Postgres 18+** — latest, better performance; slightly newer than 15
+- **Postgres 15+** — mature, JSONB, row-level constraints; operators must manage backups
+- **Postgres 18+** (chosen) — latest stable, improved performance, better JSON/JSONB handling
 - **MySQL 8+** — comparable; weaker JSON support, less suitable for flexible AI metadata
 - **CockroachDB** — distributed; operational complexity for single-server deployment
 
