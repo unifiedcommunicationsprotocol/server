@@ -214,7 +214,7 @@ func (gsm *GroupStateManager) ProposeRemove(threadID, memberToRemove string) (*P
 		return nil, fmt.Errorf("member not found")
 	}
 
-	proposal := &RemoveProposal{LeafNodeIndex: leafIndex}
+	proposal := &RemoveProposal{LeafNodeIndex: leafIndex, Member: memberToRemove}
 	ref := NewProposalRef(proposal)
 	proposalWithRef := &ProposalWithRef{
 		Ref:       ref,
@@ -279,13 +279,30 @@ func (gsm *GroupStateManager) CommitProposals(threadID, committer string) (*MLSC
 					JoinedAt:   time.Now().UnixMilli(),
 					Status:     MemberActive,
 				}
+				// Also update the underlying Group's member list (without calling AdvanceEpoch again)
+				isMember := false
+				for _, existing := range group.Group.Members {
+					if existing == member {
+						isMember = true
+						break
+					}
+				}
+				if !isMember {
+					group.Group.Members = append(group.Group.Members, member)
+				}
 			}
 		case *RemoveProposal:
-			// Find and remove member
-			for _, state := range group.Members {
-				if state.Status == MemberActive {
+			// Remove member
+			if p.Member != "" {
+				// Remove from Group's member list (without calling AdvanceEpoch again)
+				for i, member := range group.Group.Members {
+					if member == p.Member {
+						group.Group.Members = append(group.Group.Members[:i], group.Group.Members[i+1:]...)
+						break
+					}
+				}
+				if state, ok := group.Members[p.Member]; ok {
 					state.Status = MemberRemoved
-					break
 				}
 			}
 		}

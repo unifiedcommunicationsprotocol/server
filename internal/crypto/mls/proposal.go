@@ -100,6 +100,7 @@ func DeserializeUpdateProposal(data []byte) (*UpdateProposal, error) {
 // RemoveProposal removes a member from the group.
 type RemoveProposal struct {
 	LeafNodeIndex uint32
+	Member        string // UCP address of member being removed
 }
 
 func (rp *RemoveProposal) Type() ProposalType {

@@ -2,303 +2,212 @@
 package crypto
 
 import (
-	"crypto/aes"
-	"crypto/cipher"
-	"crypto/rand"
-	"encoding/base64"
 	"fmt"
-	"io"
+	"sync"
 
+	"github.com/unifiedcommunicationsprotocol/server/internal/crypto/mls"
 	"github.com/unifiedcommunicationsprotocol/server/internal/models"
 )
 
-// Group represents an MLS group for a thread.
+// Group wraps an MLS ManagedGroup with thread ID.
 type Group struct {
-	ID          []byte // SHA-256 of "group:" || thread_id
 	ThreadID    models.ULID
-	Epoch       uint64
-	Members     []string
-	EncryptKey  []byte // For testing/demo; real MLS uses key schedule
+	ManagedGroup *mls.ManagedGroup
 }
 
-// Manager manages MLS groups and encryption/decryption.
+// Manager manages MLS groups and encryption/decryption using RFC 9420 implementation.
 type Manager struct {
-	groups map[string]*Group
+	mu     sync.RWMutex
+	gsm    *mls.GroupStateManager
+	groups map[string]*Group // keyed by thread ID
 }
 
-// New creates a new crypto Manager.
+// New creates a new crypto Manager with real MLS implementation.
 func New() *Manager {
 	return &Manager{
+		gsm:    mls.NewGroupStateManager(),
 		groups: make(map[string]*Group),
 	}
 }
 
-// CreateGroup creates a new MLS group for a thread.
-// Real implementation: use MLS RFC 9420 library to set up group with KeyPackages.
+// CreateGroup creates a new MLS group for a thread using RFC 9420.
+// Sets up the group with initial members, encryption key schedule, and tree structure.
 func (m *Manager) CreateGroup(threadID models.ULID, members []string) (*Group, error) {
 	if len(members) == 0 {
 		return nil, fmt.Errorf("group must have at least one member")
 	}
 
-	// Derive group ID from thread ID (per spec: SHA-256("group:" || thread_id))
-	groupID := deriveGroupID(threadID)
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	threadIDStr := string(threadID)
+
+	// Check if already exists
+	if _, exists := m.groups[threadIDStr]; exists {
+		return nil, fmt.Errorf("group already exists for thread %s", threadIDStr)
+	}
+
+	// Create group using real MLS GroupStateManager
+	managedGroup, err := m.gsm.CreateGroup(threadIDStr, members)
+	if err != nil {
+		return nil, fmt.Errorf("create MLS group: %w", err)
+	}
 
 	group := &Group{
-		ID:       groupID,
-		ThreadID: threadID,
-		Epoch:    0,
-		Members:  members,
+		ThreadID:     threadID,
+		ManagedGroup: managedGroup,
 	}
 
-	// Generate a test encryption key; real MLS uses key schedule
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		return nil, fmt.Errorf("generate encryption key: %w", err)
-	}
-	group.EncryptKey = key
-
-	m.groups[string(groupID)] = group
+	m.groups[threadIDStr] = group
 	return group, nil
 }
 
-// GetGroup retrieves a group by ID.
-func (m *Manager) GetGroup(groupID []byte) (*Group, error) {
-	group, ok := m.groups[string(groupID)]
+// GetGroup retrieves a group by thread ID.
+func (m *Manager) GetGroup(threadID models.ULID) (*Group, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	group, ok := m.groups[string(threadID)]
 	if !ok {
-		return nil, fmt.Errorf("group not found")
+		return nil, fmt.Errorf("group not found for thread %s", threadID)
 	}
 	return group, nil
 }
 
-// EncryptMessage encrypts a message for a group using the group's encryption key.
-// Real implementation: use MLS PrivateMessage with proper key derivation and framing.
-// For now: use AES-256-GCM for demo/testing.
-func (m *Manager) EncryptMessage(groupID []byte, plaintext []byte) ([]byte, error) {
-	group, err := m.GetGroup(groupID)
+// EncryptMessage encrypts a message for a group using MLS encryption with proper key schedule.
+// Uses the group's AES-128-GCM encryption with the current epoch's encryption secret.
+func (m *Manager) EncryptMessage(threadID models.ULID, plaintext []byte) ([]byte, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	group, ok := m.groups[string(threadID)]
+	if !ok {
+		return nil, fmt.Errorf("group not found for thread %s", threadID)
+	}
+
+	// Use MLS encryption with the group's encryption handler
+	if group.ManagedGroup.Encryption == nil {
+		return nil, fmt.Errorf("group encryption not initialized")
+	}
+
+	ciphertext, err := group.ManagedGroup.Encryption.Encrypt(plaintext)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("encrypt message: %w", err)
 	}
 
-	block, err := aes.NewCipher(group.EncryptKey)
-	if err != nil {
-		return nil, fmt.Errorf("create cipher: %w", err)
-	}
-
-	gcm, err := cipher.NewGCM(block)
-	if err != nil {
-		return nil, fmt.Errorf("create GCM: %w", err)
-	}
-
-	nonce := make([]byte, gcm.NonceSize())
-	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("generate nonce: %w", err)
-	}
-
-	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
 	return ciphertext, nil
 }
 
-// DecryptMessage decrypts a message from a group.
-// Real implementation: use MLS PrivateMessage deserialization and decryption.
-func (m *Manager) DecryptMessage(groupID []byte, ciphertext []byte) ([]byte, error) {
-	group, err := m.GetGroup(groupID)
-	if err != nil {
-		return nil, err
+// DecryptMessage decrypts a message from a group using MLS decryption.
+// Uses the group's AES-128-GCM decryption with the current epoch's encryption secret.
+func (m *Manager) DecryptMessage(threadID models.ULID, ciphertext []byte) ([]byte, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	group, ok := m.groups[string(threadID)]
+	if !ok {
+		return nil, fmt.Errorf("group not found for thread %s", threadID)
 	}
 
-	block, err := aes.NewCipher(group.EncryptKey)
-	if err != nil {
-		return nil, fmt.Errorf("create cipher: %w", err)
+	if group.ManagedGroup.Encryption == nil {
+		return nil, fmt.Errorf("group encryption not initialized")
 	}
 
-	gcm, err := cipher.NewGCM(block)
+	plaintext, err := group.ManagedGroup.Encryption.Decrypt(ciphertext)
 	if err != nil {
-		return nil, fmt.Errorf("create GCM: %w", err)
-	}
-
-	nonceSize := gcm.NonceSize()
-	if len(ciphertext) < nonceSize {
-		return nil, fmt.Errorf("ciphertext too short")
-	}
-
-	nonce := ciphertext[:nonceSize]
-	encrypted := ciphertext[nonceSize:]
-
-	plaintext, err := gcm.Open(nil, nonce, encrypted, nil)
-	if err != nil {
-		return nil, fmt.Errorf("decrypt: %w", err)
+		return nil, fmt.Errorf("decrypt message: %w", err)
 	}
 
 	return plaintext, nil
 }
 
-// AddMember adds a member to a group.
-// Real implementation: commit Add proposal, advance epoch, send Welcome to new member.
-func (m *Manager) AddMember(groupID []byte, member string) error {
-	group, err := m.GetGroup(groupID)
+// AddMember adds a member to a group via MLS Add proposal.
+// Proposes the addition and commits the proposal to advance the epoch.
+func (m *Manager) AddMember(threadID models.ULID, member string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	threadIDStr := string(threadID)
+
+	// Propose add via GroupStateManager
+	_, err := m.gsm.ProposeAdd(threadIDStr, member)
 	if err != nil {
-		return err
+		return fmt.Errorf("propose add member: %w", err)
 	}
 
-	// Check if already a member
-	for _, existing := range group.Members {
-		if existing == member {
-			return fmt.Errorf("member already in group")
-		}
+	// Commit the proposal to advance epoch
+	_, err = m.gsm.CommitProposals(threadIDStr, "system")
+	if err != nil {
+		return fmt.Errorf("commit add proposal: %w", err)
 	}
-
-	group.Members = append(group.Members, member)
-	group.Epoch++
 
 	return nil
 }
 
-// RemoveMember removes a member from a group.
-// Real implementation: commit Remove proposal, advance epoch.
-func (m *Manager) RemoveMember(groupID []byte, member string) error {
-	group, err := m.GetGroup(groupID)
+// RemoveMember removes a member from a group via MLS Remove proposal.
+// Proposes the removal and commits the proposal to advance the epoch.
+func (m *Manager) RemoveMember(threadID models.ULID, member string) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	threadIDStr := string(threadID)
+
+	// Propose remove via GroupStateManager
+	_, err := m.gsm.ProposeRemove(threadIDStr, member)
 	if err != nil {
-		return err
+		return fmt.Errorf("propose remove member: %w", err)
 	}
 
-	for i, existing := range group.Members {
-		if existing == member {
-			group.Members = append(group.Members[:i], group.Members[i+1:]...)
-			group.Epoch++
-			return nil
-		}
+	// Commit the proposal to advance epoch
+	_, err = m.gsm.CommitProposals(threadIDStr, "system")
+	if err != nil {
+		return fmt.Errorf("commit remove proposal: %w", err)
 	}
 
-	return fmt.Errorf("member not in group")
+	return nil
 }
 
 // AdvanceEpoch advances the group epoch (on signing key rotation).
-// Real implementation: commit Update proposal with new signing key credential.
-func (m *Manager) AdvanceEpoch(groupID []byte) error {
-	group, err := m.GetGroup(groupID)
-	if err != nil {
-		return err
+// Uses MLS Update proposal to signal key rotation and derive new epoch secrets.
+func (m *Manager) AdvanceEpoch(threadID models.ULID) error {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+
+	threadIDStr := string(threadID)
+
+	group, ok := m.groups[threadIDStr]
+	if !ok {
+		return fmt.Errorf("group not found for thread %s", threadID)
 	}
 
-	group.Epoch++
-
-	// In real MLS: derive new epoch key, delete old one (forward secrecy)
-	// For demo: regenerate encryption key
-	key := make([]byte, 32)
-	if _, err := rand.Read(key); err != nil {
-		return fmt.Errorf("generate new encryption key: %w", err)
-	}
-	group.EncryptKey = key
+	// Advance epoch on the MLS group
+	group.ManagedGroup.Group.AdvanceEpoch()
 
 	return nil
 }
 
-// Helper to derive group ID from thread ID (per spec).
-func deriveGroupID(threadID models.ULID) []byte {
-	// Real implementation: SHA-256("group:" || thread_id)
-	// For now, just return base64 encoding
-	return []byte(base64.StdEncoding.EncodeToString([]byte("group:" + string(threadID))))
+// GetGroupMembers returns the current members of a group.
+func (m *Manager) GetGroupMembers(threadID models.ULID) ([]string, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
+
+	group, ok := m.groups[string(threadID)]
+	if !ok {
+		return nil, fmt.Errorf("group not found for thread %s", threadID)
+	}
+
+	return group.ManagedGroup.Group.Members, nil
 }
 
-// DeriveBCCGroupID derives a BCC group ID (per spec).
-// Schema: SHA-256("group_bcc:" || thread_id || ":" || recipient_address)
-func DeriveBCCGroupID(threadID models.ULID, recipientAddress string) []byte {
-	// Real implementation: SHA-256 hash
-	return []byte(base64.StdEncoding.EncodeToString([]byte("group_bcc:" + string(threadID) + ":" + recipientAddress)))
-}
+// GetGroupEpoch returns the current epoch of a group.
+func (m *Manager) GetGroupEpoch(threadID models.ULID) (uint64, error) {
+	m.mu.RLock()
+	defer m.mu.RUnlock()
 
-// KeyPackage represents an MLS key package.
-type KeyPackage struct {
-	GroupID    []byte
-	InitKey    []byte // HPKE public key
-	SigningKey []byte // Ed25519 public key
-}
-
-// CreateKeyPackage creates a new key package for group creation.
-// Real implementation: generate HPKE and Ed25519 keys, build per RFC 9420.
-func (m *Manager) CreateKeyPackage(groupID []byte) (*KeyPackage, error) {
-	// In reality, these would be proper HPKE and Ed25519 keys
-	initKey := make([]byte, 32)
-	if _, err := rand.Read(initKey); err != nil {
-		return nil, fmt.Errorf("generate init key: %w", err)
+	group, ok := m.groups[string(threadID)]
+	if !ok {
+		return 0, fmt.Errorf("group not found for thread %s", threadID)
 	}
 
-	signingKey := make([]byte, 32)
-	if _, err := rand.Read(signingKey); err != nil {
-		return nil, fmt.Errorf("generate signing key: %w", err)
-	}
-
-	return &KeyPackage{
-		GroupID:    groupID,
-		InitKey:    initKey,
-		SigningKey: signingKey,
-	}, nil
-}
-
-// EncodeKeyPackage encodes a key package as base64.
-func EncodeKeyPackage(kp *KeyPackage) string {
-	// In reality: TLS-serialize per RFC 9420, then base64
-	// For now: concatenate with length prefixes
-	data := make([]byte, 0)
-	data = append(data, byte(len(kp.GroupID)))
-	data = append(data, kp.GroupID...)
-	data = append(data, byte(len(kp.InitKey)))
-	data = append(data, kp.InitKey...)
-	data = append(data, byte(len(kp.SigningKey)))
-	data = append(data, kp.SigningKey...)
-	return base64.StdEncoding.EncodeToString(data)
-}
-
-// DecodeKeyPackage decodes a base64-encoded key package.
-func DecodeKeyPackage(encoded string) (*KeyPackage, error) {
-	data, err := base64.StdEncoding.DecodeString(encoded)
-	if err != nil {
-		return nil, fmt.Errorf("decode base64: %w", err)
-	}
-
-	// Simplified parsing with length prefixes
-	if len(data) < 4 {
-		return nil, fmt.Errorf("key package too short")
-	}
-
-	pos := 0
-	groupIDLen := int(data[pos])
-	pos++
-
-	if pos+groupIDLen > len(data) {
-		return nil, fmt.Errorf("invalid group ID length")
-	}
-	groupID := data[pos : pos+groupIDLen]
-	pos += groupIDLen
-
-	if pos >= len(data) {
-		return nil, fmt.Errorf("missing init key")
-	}
-	initKeyLen := int(data[pos])
-	pos++
-
-	if pos+initKeyLen > len(data) {
-		return nil, fmt.Errorf("invalid init key length")
-	}
-	initKey := data[pos : pos+initKeyLen]
-	pos += initKeyLen
-
-	if pos >= len(data) {
-		return nil, fmt.Errorf("missing signing key")
-	}
-	signingKeyLen := int(data[pos])
-	pos++
-
-	if pos+signingKeyLen > len(data) {
-		return nil, fmt.Errorf("invalid signing key length")
-	}
-	signingKey := data[pos : pos+signingKeyLen]
-
-	kp := &KeyPackage{
-		GroupID:    groupID,
-		InitKey:    initKey,
-		SigningKey: signingKey,
-	}
-
-	return kp, nil
+	return group.ManagedGroup.Group.Epoch, nil
 }
