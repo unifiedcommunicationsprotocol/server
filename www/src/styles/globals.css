@@ -1,0 +1,104 @@
+@import url('https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@theme {
+  --color-bg-base: #09090B;
+  --color-bg-surface: #111113;
+  --color-bg-sunken: #18181B;
+  --color-bg-deep: #09090B;
+
+  --color-border: #1E1E22;
+
+  --color-text-primary: #FAFAFA;
+  --color-text-secondary: #A1A1AA;
+  --color-text-muted: #71717A;
+  --color-text-subtle: #52525B;
+  --color-text-faint: #3F3F46;
+
+  --color-accent: #6366F1;
+  --color-accent-bg: rgba(99, 102, 241, 0.09);
+  --color-accent-badge-bg: rgba(99, 102, 241, 0.12);
+
+  --color-success: #22C55E;
+  --color-success-bg: rgba(34, 197, 94, 0.08);
+  --color-success-badge-bg: rgba(34, 197, 94, 0.10);
+
+  --color-warning: #D97706;
+  --color-warning-bg: rgba(217, 119, 6, 0.10);
+
+  --color-error: #EF4444;
+
+  --font-ui: 'Space Grotesk', sans-serif;
+  --font-mono: 'JetBrains Mono', monospace;
+
+  --radius-sm: 3px;
+  --radius-md: 6px;
+  --radius-lg: 8px;
+  --radius-xl: 10px;
+}
+
+* {
+  @apply border-border;
+}
+
+html {
+  @apply bg-bg-base text-text-primary font-ui;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+}
+
+@keyframes fadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+@keyframes pulse {
+  0%, 100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 5px;
+  height: 5px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: #28282C;
+  border-radius: 3px;
+}
+
+/* Utilities */
+.fade-in {
+  animation: fadeIn 0.15s ease;
+}
+
+.pulse-dot {
+  animation: pulse 1.5s ease infinite;
+}
