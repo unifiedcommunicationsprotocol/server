@@ -44,8 +44,8 @@ func run() error {
 	defer s.Close()
 	logger.Info("connected to database")
 
-	// Initialize auth manager
-	authMgr := auth.New()
+	// Initialize auth manager with database persistence
+	authMgr := auth.NewWithStore(s)
 	challengeStore := auth.NewChallengeStore()
 
 	// Initialize rate limiters
@@ -125,7 +125,6 @@ func loadConfig() config {
 	if strings.HasPrefix(dbURL, "postgres://") {
 		dbURL = convertPgURL(dbURL)
 	}
-	fmt.Printf("DEBUG: Final DSN for pq: %s\n", dbURL)
 	return config{
 		Listen:       getEnv("API_PORT", ":5150"),
 		DatabaseURL: dbURL,

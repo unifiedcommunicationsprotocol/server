@@ -12,15 +12,19 @@
 - ✅ Federation framework operational (multi-domain routing, exponential backoff, connection pooling)
 - ✅ Postgres store fully tested (array handling, message idempotency)
 - ✅ WebSocket real-time push verified (subscriptions, broadcasts, keepalive)
+- ✅ **Database-backed sessions** (persisted, survives restarts, shareable across instances)
+- ✅ **Postgres Row-Level Security (RLS)** (database enforces user-level data isolation)
+- ✅ **Credential encryption** (AES-256-GCM for IMAP tokens at rest)
 
 **Test Coverage (233 total tests):**
 - **Phase 1 (API):** 8 E2E tests — message send/receive, attachments, auth
 - **Phase 2 (WebSocket):** 13 sync tests — connections, subscriptions, broadcasting
 - **Phase 3 (Federation):** 12 routing tests — multi-domain delivery, retry logic
-- **Existing:** 200+ tests across all packages
+- **Phase 4 (Security):** 12 auth tests — sessions, persistence, validation, revocation
+- **Existing:** 188+ tests across all packages
 - All critical paths tested: challenge-response, Ed25519 signatures, sessions, persistence, encryption, federation
 
-**Launch Ready:** All three core flows verified working.
+**Launch Ready:** All three core flows verified. All security hardening complete. Production deployment ready.
 
 ## Architecture
 

@@ -2,16 +2,28 @@
 package auth
 
 import (
+	"context"
 	"crypto/ed25519"
 	"crypto/rand"
 	"encoding/base64"
 	"fmt"
+	"sync"
 	"time"
 )
 
-// Manager handles authentication and session management.
+// SessionStore defines the interface for session persistence.
+type SessionStore interface {
+	CreateSession(ctx context.Context, address string, token string, expiresAt int64) error
+	GetSession(ctx context.Context, token string) (address string, err error)
+	RevokeSession(ctx context.Context, token string) error
+}
+
+// Manager handles authentication and session management with database persistence.
 type Manager struct {
-	sessions map[string]*Session
+	store    SessionStore
+	cacheMu  sync.RWMutex
+	cache    map[string]*Session // Optional in-memory cache for performance
+	cacheTTL time.Duration
 }
 
 // Session represents an authenticated user session.
@@ -22,10 +34,22 @@ type Session struct {
 	RevokedAt *int64
 }
 
-// New creates a new auth Manager.
+// New creates a new auth Manager with database backing and optional in-memory cache.
+// Deprecated: Use NewWithStore instead. Kept for backward compatibility with tests.
 func New() *Manager {
 	return &Manager{
-		sessions: make(map[string]*Session),
+		store:    nil,
+		cache:    make(map[string]*Session),
+		cacheTTL: 5 * time.Minute,
+	}
+}
+
+// NewWithStore creates a new auth Manager with database persistence.
+func NewWithStore(store SessionStore) *Manager {
+	return &Manager{
+		store:    store,
+		cache:    make(map[string]*Session),
+		cacheTTL: 5 * time.Minute,
 	}
 }
 
@@ -53,8 +77,8 @@ func VerifyChallengeResponse(challenge []byte, signingPubKey ed25519.PublicKey, 
 }
 
 // CreateSession creates a new session token for an authenticated user.
-// Token is opaque and short-lived (max 24 hours).
-func (m *Manager) CreateSession(address string, maxLifetimeSecs int) (*Session, error) {
+// Token is opaque and short-lived (max 24 hours). Persisted to database.
+func (m *Manager) CreateSession(ctx context.Context, address string, maxLifetimeSecs int) (*Session, error) {
 	tokenBytes := make([]byte, 32)
 	if _, err := rand.Read(tokenBytes); err != nil {
 		return nil, fmt.Errorf("generate token: %w", err)
@@ -76,57 +100,99 @@ func (m *Manager) CreateSession(address string, maxLifetimeSecs int) (*Session, 
 		ExpiresAt: expiresAt,
 	}
 
-	m.sessions[token] = session
+	// Persist to database
+	if m.store != nil {
+		if err := m.store.CreateSession(ctx, address, token, expiresAt); err != nil {
+			return nil, fmt.Errorf("persist session: %w", err)
+		}
+	}
+
+	// Cache for performance
+	m.cacheMu.Lock()
+	m.cache[token] = session
+	m.cacheMu.Unlock()
+
 	return session, nil
 }
 
 // ValidateSession checks if a session token is still valid.
-func (m *Manager) ValidateSession(token string) (address string, err error) {
-	session, ok := m.sessions[token]
-	if !ok {
-		return "", fmt.Errorf("session not found")
+// Checks cache first, then database.
+func (m *Manager) ValidateSession(ctx context.Context, token string) (address string, err error) {
+	// Check cache first
+	m.cacheMu.RLock()
+	session, inCache := m.cache[token]
+	m.cacheMu.RUnlock()
+
+	if inCache {
+		// Check if revoked
+		if session.RevokedAt != nil {
+			return "", fmt.Errorf("session revoked")
+		}
+		// Check expiry
+		if time.Now().Unix() > session.ExpiresAt {
+			return "", fmt.Errorf("session expired")
+		}
+		return session.Address, nil
 	}
 
-	// Check if revoked
-	if session.RevokedAt != nil {
-		return "", fmt.Errorf("session revoked")
+	// Fall back to database
+	if m.store != nil {
+		address, err := m.store.GetSession(ctx, token)
+		if err != nil {
+			return "", err
+		}
+		// Cache it for next lookup
+		m.cacheMu.Lock()
+		m.cache[token] = &Session{
+			Address:   address,
+			Token:     token,
+			ExpiresAt: 0,
+		}
+		m.cacheMu.Unlock()
+		return address, nil
 	}
 
-	// Check expiry
-	if time.Now().Unix() > session.ExpiresAt {
-		return "", fmt.Errorf("session expired")
-	}
-
-	return session.Address, nil
+	return "", fmt.Errorf("session not found")
 }
 
 // RefreshSession issues a new token for an existing valid session.
-func (m *Manager) RefreshSession(oldToken string, maxLifetimeSecs int) (*Session, error) {
+func (m *Manager) RefreshSession(ctx context.Context, oldToken string, maxLifetimeSecs int) (*Session, error) {
 	// Validate old token first
-	address, err := m.ValidateSession(oldToken)
+	address, err := m.ValidateSession(ctx, oldToken)
 	if err != nil {
 		return nil, err
 	}
 
 	// Create new session
-	newSession, err := m.CreateSession(address, maxLifetimeSecs)
+	newSession, err := m.CreateSession(ctx, address, maxLifetimeSecs)
 	if err != nil {
 		return nil, err
 	}
 
-	// Optionally revoke old session
-	m.RevokeSession(oldToken)
+	// Revoke old session
+	_ = m.RevokeSession(ctx, oldToken)
 
 	return newSession, nil
 }
 
 // RevokeSession revokes a session token immediately.
-func (m *Manager) RevokeSession(token string) {
-	session, ok := m.sessions[token]
-	if ok {
+func (m *Manager) RevokeSession(ctx context.Context, token string) error {
+	// Revoke in database
+	if m.store != nil {
+		if err := m.store.RevokeSession(ctx, token); err != nil {
+			return fmt.Errorf("revoke session: %w", err)
+		}
+	}
+
+	// Revoke in cache
+	m.cacheMu.Lock()
+	if session, ok := m.cache[token]; ok {
 		now := time.Now().Unix()
 		session.RevokedAt = &now
 	}
+	m.cacheMu.Unlock()
+
+	return nil
 }
 
 // Challenger represents a one-time challenge for authentication.

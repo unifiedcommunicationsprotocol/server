@@ -17,6 +17,8 @@ func TestFullMessageFlow(t *testing.T) {
 	// Setup auth
 	authMgr := auth.New()
 	challengeStore := auth.NewChallengeStore()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	// Alice issues a challenge
 	aliceChallenge, err := challengeStore.IssueChallenge("alice@example.com")
@@ -33,13 +35,13 @@ func TestFullMessageFlow(t *testing.T) {
 		t.Fatalf("consume challenge: %v", err)
 	}
 
-	aliceSession, err := authMgr.CreateSession("alice@example.com", 3600)
+	aliceSession, err := authMgr.CreateSession(ctx, "alice@example.com", 3600)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
 
 	// Verify session is valid
-	address, err := authMgr.ValidateSession(aliceSession.Token)
+	address, err := authMgr.ValidateSession(ctx, aliceSession.Token)
 	if err != nil {
 		t.Fatalf("validate session: %v", err)
 	}
@@ -181,9 +183,11 @@ func TestEncryptionKeySchedule(t *testing.T) {
 // TestSessionRefresh simulates token refresh flow.
 func TestSessionRefresh(t *testing.T) {
 	authMgr := auth.New()
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
 
 	// Create initial session
-	session1, err := authMgr.CreateSession("user@example.com", 1800)
+	session1, err := authMgr.CreateSession(ctx, "user@example.com", 1800)
 	if err != nil {
 		t.Fatalf("create session: %v", err)
 	}
@@ -191,13 +195,13 @@ func TestSessionRefresh(t *testing.T) {
 	token1 := session1.Token
 
 	// Validate it works
-	_, err = authMgr.ValidateSession(token1)
+	_, err = authMgr.ValidateSession(ctx, token1)
 	if err != nil {
 		t.Fatalf("validate session 1: %v", err)
 	}
 
 	// Refresh to get new token
-	session2, err := authMgr.RefreshSession(token1, 3600)
+	session2, err := authMgr.RefreshSession(ctx, token1, 3600)
 	if err != nil {
 		t.Fatalf("refresh session: %v", err)
 	}
@@ -210,13 +214,13 @@ func TestSessionRefresh(t *testing.T) {
 	}
 
 	// New token should be valid
-	_, err = authMgr.ValidateSession(token2)
+	_, err = authMgr.ValidateSession(ctx, token2)
 	if err != nil {
 		t.Fatalf("validate session 2: %v", err)
 	}
 
 	// Old token should be revoked
-	_, err = authMgr.ValidateSession(token1)
+	_, err = authMgr.ValidateSession(ctx, token1)
 	if err == nil {
 		t.Error("old token should be invalid after refresh")
 	}

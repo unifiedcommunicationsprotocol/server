@@ -185,3 +185,88 @@ CREATE TABLE federation_bundle_log (
 
 CREATE INDEX idx_federation_bundle_log_status ON federation_bundle_log(status);
 CREATE INDEX idx_federation_bundle_log_committed_at ON federation_bundle_log(committed_at);
+
+-- Row-Level Security (RLS) Policies
+-- Enable RLS on all tables that contain user-specific data
+
+ALTER TABLE identities ENABLE ROW LEVEL SECURITY;
+ALTER TABLE sessions ENABLE ROW LEVEL SECURITY;
+ALTER TABLE messages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE key_packages ENABLE ROW LEVEL SECURITY;
+ALTER TABLE key_shares ENABLE ROW LEVEL SECURITY;
+ALTER TABLE bridge_imap_accounts ENABLE ROW LEVEL SECURITY;
+
+-- RLS Policy: identities — each user can only view their own identity
+CREATE POLICY identities_select_policy ON identities FOR SELECT
+  USING (address = current_user_addr());
+
+CREATE POLICY identities_insert_policy ON identities FOR INSERT
+  WITH CHECK (address = current_user_addr());
+
+CREATE POLICY identities_update_policy ON identities FOR UPDATE
+  USING (address = current_user_addr())
+  WITH CHECK (address = current_user_addr());
+
+-- RLS Policy: sessions — each user can only view/manage their own sessions
+CREATE POLICY sessions_select_policy ON sessions FOR SELECT
+  USING (address = current_user_addr());
+
+CREATE POLICY sessions_update_policy ON sessions FOR UPDATE
+  USING (address = current_user_addr())
+  WITH CHECK (address = current_user_addr());
+
+CREATE POLICY sessions_delete_policy ON sessions FOR DELETE
+  USING (address = current_user_addr());
+
+-- RLS Policy: messages — users can only view messages where they are a recipient
+-- This requires checking the from_addr or to_addrs array
+CREATE POLICY messages_select_policy ON messages FOR SELECT
+  USING (
+    from_addr = current_user_addr() OR
+    to_addrs @> ARRAY[current_user_addr()]
+  );
+
+CREATE POLICY messages_insert_policy ON messages FOR INSERT
+  WITH CHECK (from_addr = current_user_addr());
+
+-- RLS Policy: key_packages — users can only view their own key packages
+CREATE POLICY key_packages_select_policy ON key_packages FOR SELECT
+  USING (address = current_user_addr());
+
+CREATE POLICY key_packages_insert_policy ON key_packages FOR INSERT
+  WITH CHECK (address = current_user_addr());
+
+CREATE POLICY key_packages_delete_policy ON key_packages FOR DELETE
+  USING (address = current_user_addr());
+
+-- RLS Policy: key_shares — users can only view their own key shares
+CREATE POLICY key_shares_select_policy ON key_shares FOR SELECT
+  USING (address = current_user_addr());
+
+CREATE POLICY key_shares_insert_policy ON key_shares FOR INSERT
+  WITH CHECK (address = current_user_addr());
+
+CREATE POLICY key_shares_update_policy ON key_shares FOR UPDATE
+  USING (address = current_user_addr())
+  WITH CHECK (address = current_user_addr());
+
+-- RLS Policy: bridge_imap_accounts — users can only view their own bridge accounts
+CREATE POLICY bridge_imap_accounts_select_policy ON bridge_imap_accounts FOR SELECT
+  USING (address = current_user_addr());
+
+CREATE POLICY bridge_imap_accounts_insert_policy ON bridge_imap_accounts FOR INSERT
+  WITH CHECK (address = current_user_addr());
+
+CREATE POLICY bridge_imap_accounts_update_policy ON bridge_imap_accounts FOR UPDATE
+  USING (address = current_user_addr())
+  WITH CHECK (address = current_user_addr());
+
+CREATE POLICY bridge_imap_accounts_delete_policy ON bridge_imap_accounts FOR DELETE
+  USING (address = current_user_addr());
+
+-- Helper function: get current authenticated user address
+-- This is called from RLS policies to determine the current user
+-- In production, this should be set via a Postgres role or jwt claims extension
+CREATE OR REPLACE FUNCTION current_user_addr() RETURNS TEXT AS $$
+  SELECT current_setting('app.current_user_addr', true)::TEXT;
+$$ LANGUAGE SQL STABLE;

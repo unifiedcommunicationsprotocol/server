@@ -2,12 +2,14 @@ package main
 
 import (
 	"bytes"
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/unifiedcommunicationsprotocol/server/internal/auth"
 )
@@ -168,7 +170,9 @@ func TestAuthChallengeAndSign(t *testing.T) {
 	}
 
 	// Step 5: Create session (what server would do after verifying signature)
-	session, err := authMgr.CreateSession(address, 24*3600)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	session, err := authMgr.CreateSession(ctx, address, 24*3600)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
@@ -184,12 +188,14 @@ func TestAuthChallengeAndSign(t *testing.T) {
 func TestSessionValidation(t *testing.T) {
 	authMgr := auth.New()
 	address := "bob@example.com"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// Create session
-	session, _ := authMgr.CreateSession(address, 3600)
+	session, _ := authMgr.CreateSession(ctx, address, 3600)
 
 	// Validate it
-	retrievedAddr, err := authMgr.ValidateSession(session.Token)
+	retrievedAddr, err := authMgr.ValidateSession(ctx, session.Token)
 	if err != nil {
 		t.Fatalf("Validation failed: %v", err)
 	}
@@ -199,7 +205,7 @@ func TestSessionValidation(t *testing.T) {
 	}
 
 	// Try invalid token
-	_, err = authMgr.ValidateSession("invalid-token")
+	_, err = authMgr.ValidateSession(ctx, "invalid-token")
 	if err == nil {
 		t.Error("Should have rejected invalid token")
 	}
@@ -282,15 +288,17 @@ func TestHandlerBadRequest(t *testing.T) {
 func TestSessionExpiry(t *testing.T) {
 	authMgr := auth.New()
 	address := "expiry@example.com"
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// Create session with 0 second TTL (expires immediately in practical terms)
-	session, err := authMgr.CreateSession(address, 0)
+	session, err := authMgr.CreateSession(ctx, address, 0)
 	if err != nil {
 		t.Fatalf("Failed to create session: %v", err)
 	}
 
 	// Session should still be valid immediately (Unix time precision)
-	retrievedAddr, err := authMgr.ValidateSession(session.Token)
+	retrievedAddr, err := authMgr.ValidateSession(ctx, session.Token)
 	if err != nil {
 		t.Logf("Note: Session expired immediately (expected with 0 TTL): %v", err)
 	} else {
@@ -366,11 +374,13 @@ func TestChallengeSignatureVerification(t *testing.T) {
 // TestSessionTokenFormat tests that session tokens are properly formatted
 func TestSessionTokenFormat(t *testing.T) {
 	authMgr := auth.New()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// Create multiple sessions and verify tokens are unique
 	tokens := make(map[string]bool)
 	for i := 0; i < 10; i++ {
-		session, _ := authMgr.CreateSession("user@example.com", 3600)
+		session, _ := authMgr.CreateSession(ctx, "user@example.com", 3600)
 
 		// Verify it's base64 and decodable
 		decoded, err := base64.StdEncoding.DecodeString(session.Token)

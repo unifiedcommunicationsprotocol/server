@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"context"
 	"crypto/ed25519"
 	"encoding/base64"
 	"testing"
@@ -48,8 +49,10 @@ func TestVerifyChallengeResponse(t *testing.T) {
 
 func TestCreateSession(t *testing.T) {
 	m := New()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	session, err := m.CreateSession("alice@example.com", 3600)
+	session, err := m.CreateSession(ctx, "alice@example.com", 3600)
 	if err != nil {
 		t.Fatalf("CreateSession error: %v", err)
 	}
@@ -73,11 +76,13 @@ func TestCreateSession(t *testing.T) {
 
 func TestValidateSession(t *testing.T) {
 	m := New()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	session, _ := m.CreateSession("alice@example.com", 3600)
+	session, _ := m.CreateSession(ctx, "alice@example.com", 3600)
 
 	// Valid session
-	address, err := m.ValidateSession(session.Token)
+	address, err := m.ValidateSession(ctx, session.Token)
 	if err != nil {
 		t.Fatalf("ValidateSession error: %v", err)
 	}
@@ -87,7 +92,7 @@ func TestValidateSession(t *testing.T) {
 	}
 
 	// Nonexistent token
-	_, err = m.ValidateSession("fake_token")
+	_, err = m.ValidateSession(ctx, "fake_token")
 	if err == nil {
 		t.Error("ValidateSession should fail for nonexistent token")
 	}
@@ -95,20 +100,22 @@ func TestValidateSession(t *testing.T) {
 
 func TestRevokeSession(t *testing.T) {
 	m := New()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	session, _ := m.CreateSession("alice@example.com", 3600)
+	session, _ := m.CreateSession(ctx, "alice@example.com", 3600)
 
 	// Should be valid initially
-	_, err := m.ValidateSession(session.Token)
+	_, err := m.ValidateSession(ctx, session.Token)
 	if err != nil {
 		t.Fatal("Valid session should validate")
 	}
 
 	// Revoke
-	m.RevokeSession(session.Token)
+	_ = m.RevokeSession(ctx, session.Token)
 
 	// Should be invalid now
-	_, err = m.ValidateSession(session.Token)
+	_, err = m.ValidateSession(ctx, session.Token)
 	if err == nil {
 		t.Error("Revoked session should not validate")
 	}
@@ -116,12 +123,14 @@ func TestRevokeSession(t *testing.T) {
 
 func TestSessionExpiry(t *testing.T) {
 	m := New()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// Create with -1 second lifetime (already expired)
-	session, _ := m.CreateSession("alice@example.com", -1)
+	session, _ := m.CreateSession(ctx, "alice@example.com", -1)
 
 	// Should be expired
-	_, err := m.ValidateSession(session.Token)
+	_, err := m.ValidateSession(ctx, session.Token)
 	if err == nil {
 		t.Error("Expired session should not validate")
 	}
@@ -129,11 +138,13 @@ func TestSessionExpiry(t *testing.T) {
 
 func TestRefreshSession(t *testing.T) {
 	m := New()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
-	oldSession, _ := m.CreateSession("alice@example.com", 3600)
+	oldSession, _ := m.CreateSession(ctx, "alice@example.com", 3600)
 
 	// Refresh
-	newSession, err := m.RefreshSession(oldSession.Token, 7200)
+	newSession, err := m.RefreshSession(ctx, oldSession.Token, 7200)
 	if err != nil {
 		t.Fatalf("RefreshSession error: %v", err)
 	}
@@ -147,7 +158,7 @@ func TestRefreshSession(t *testing.T) {
 	}
 
 	// New session should be valid
-	address, err := m.ValidateSession(newSession.Token)
+	address, err := m.ValidateSession(ctx, newSession.Token)
 	if err != nil {
 		t.Fatalf("New session should validate: %v", err)
 	}
@@ -159,9 +170,11 @@ func TestRefreshSession(t *testing.T) {
 
 func TestSessionLifetimeCap(t *testing.T) {
 	m := New()
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
 
 	// Request 48-hour session
-	session, _ := m.CreateSession("alice@example.com", 48*3600)
+	session, _ := m.CreateSession(ctx, "alice@example.com", 48*3600)
 
 	// Should be capped at 24 hours
 	maxExpiry := time.Now().Unix() + 24*3600

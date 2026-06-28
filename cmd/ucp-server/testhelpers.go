@@ -97,7 +97,9 @@ func CreateTestIdentity(t *testing.T, db *testutil.TestDB, address string) (*mod
 
 // CreateTestSession creates an authenticated session for a user.
 func CreateTestSession(t *testing.T, authMgr *auth.Manager, address string) string {
-	session, err := authMgr.CreateSession(address, 24*3600)
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+	session, err := authMgr.CreateSession(ctx, address, 24*3600)
 	if err != nil {
 		t.Fatalf("failed to create test session: %v", err)
 	}

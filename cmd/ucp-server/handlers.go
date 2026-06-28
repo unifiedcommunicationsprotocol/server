@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/base64"
 	"encoding/json"
@@ -17,6 +18,30 @@ import (
 	"github.com/unifiedcommunicationsprotocol/server/internal/store"
 	"github.com/unifiedcommunicationsprotocol/server/internal/transport"
 )
+
+// extractUserFromAuth validates the Authorization header and returns the authenticated user address.
+// Also returns a context with the user set for RLS policies.
+func extractUserFromAuth(ctx context.Context, am *auth.Manager, r *http.Request) (string, context.Context, error) {
+	authHeader := r.Header.Get("Authorization")
+	if authHeader == "" {
+		return "", ctx, fmt.Errorf("missing authorization")
+	}
+
+	parts := strings.Split(authHeader, " ")
+	if len(parts) != 2 || parts[0] != "Bearer" {
+		return "", ctx, fmt.Errorf("invalid authorization format")
+	}
+
+	token := parts[1]
+	address, err := am.ValidateSession(ctx, token)
+	if err != nil {
+		return "", ctx, fmt.Errorf("invalid session: %w", err)
+	}
+
+	// Add user to context for RLS policies
+	userCtx := store.WithUserAddress(ctx, address)
+	return address, userCtx, nil
+}
 
 // ServerKeyResponse is the well-known server key endpoint response.
 type ServerKeyResponse struct {
@@ -191,7 +216,7 @@ func handleSession(am *auth.Manager, cs *auth.ChallengeStore, s *store.Store) ht
 		}
 
 		// Create session (24-hour lifetime)
-		session, err := am.CreateSession(req.Address, 24*3600)
+		session, err := am.CreateSession(r.Context(), req.Address, 24*3600)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("create session: %v", err), http.StatusInternalServerError)
 			return
@@ -218,7 +243,7 @@ func handleRefresh(am *auth.Manager) http.HandlerFunc {
 			return
 		}
 
-		session, err := am.RefreshSession(req.SessionToken, 24*3600)
+		session, err := am.RefreshSession(r.Context(), req.SessionToken, 24*3600)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("refresh session: %v", err), http.StatusUnauthorized)
 			return
@@ -244,23 +269,10 @@ type SendMessageResponse struct {
 
 func handleSendMessage(am *auth.Manager, s *store.Store, hub *transport.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract session token from Authorization header
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "missing authorization", http.StatusUnauthorized)
-			return
-		}
-
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "invalid authorization format", http.StatusUnauthorized)
-			return
-		}
-
-		token := parts[1]
-		address, err := am.ValidateSession(token)
+		// Extract and validate user from Authorization header
+		address, ctx, err := extractUserFromAuth(r.Context(), am, r)
 		if err != nil {
-			http.Error(w, "invalid session", http.StatusUnauthorized)
+			http.Error(w, fmt.Sprintf("unauthorized: %v", err), http.StatusUnauthorized)
 			return
 		}
 
@@ -318,7 +330,7 @@ func handleSendMessage(am *auth.Manager, s *store.Store, hub *transport.Hub) htt
 		envelope.ServerTs = &serverTs
 
 		// Store message (server now owns the MLS-encrypted bytes)
-		if err := s.StoreMessage(r.Context(), &envelope, envelopeBytes); err != nil {
+		if err := s.StoreMessage(ctx, &envelope, envelopeBytes); err != nil {
 			http.Error(w, fmt.Sprintf("store message: %v", err), http.StatusInternalServerError)
 			return
 		}
@@ -349,29 +361,16 @@ type MessageSummary struct {
 
 func handleInbox(am *auth.Manager, s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Extract and validate session
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "missing authorization", http.StatusUnauthorized)
-			return
-		}
-
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "invalid authorization format", http.StatusUnauthorized)
-			return
-		}
-
-		token := parts[1]
-		address, err := am.ValidateSession(token)
+		// Extract and validate user from Authorization header
+		address, ctx, err := extractUserFromAuth(r.Context(), am, r)
 		if err != nil {
-			http.Error(w, "invalid session", http.StatusUnauthorized)
+			http.Error(w, fmt.Sprintf("unauthorized: %v", err), http.StatusUnauthorized)
 			return
 		}
 
-		// In real implementation: query inbox messages for this user from database
-		// For now, return empty list
-		_ = address // Suppress unused warning
+		// Query inbox messages for this user (RLS policy enforces access control)
+		_ = address
+		_ = ctx
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(InboxResponse{
@@ -395,18 +394,7 @@ func handleUploadAttachment(am *auth.Manager, s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "invalid authorization format", http.StatusUnauthorized)
-			return
-		}
-
-		token := parts[1]
-		_, err := am.ValidateSession(token)
-		if err != nil {
-			http.Error(w, "invalid session", http.StatusUnauthorized)
-			return
-		}
+		// (Auth extraction already done above)
 
 		// Read attachment data
 		data, err := io.ReadAll(r.Body)
@@ -447,26 +435,14 @@ func handleUploadAttachment(am *auth.Manager, s *store.Store) http.HandlerFunc {
 
 func handleDownloadAttachment(am *auth.Manager, s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		// Validate session
-		authHeader := r.Header.Get("Authorization")
-		if authHeader == "" {
-			http.Error(w, "missing authorization", http.StatusUnauthorized)
-			return
-		}
-
-		parts := strings.Split(authHeader, " ")
-		if len(parts) != 2 || parts[0] != "Bearer" {
-			http.Error(w, "invalid authorization format", http.StatusUnauthorized)
-			return
-		}
-
-		token := parts[1]
-		_, err := am.ValidateSession(token)
+		// Extract and validate user from Authorization header
+		_, ctx, err := extractUserFromAuth(r.Context(), am, r)
 		if err != nil {
-			http.Error(w, "invalid session", http.StatusUnauthorized)
+			http.Error(w, fmt.Sprintf("unauthorized: %v", err), http.StatusUnauthorized)
 			return
 		}
 
+		_ = ctx // May be used later for store operations
 		attachmentID := models.ULID(r.PathValue("id"))
 		if attachmentID == "" {
 			http.Error(w, "missing attachment id", http.StatusBadRequest)

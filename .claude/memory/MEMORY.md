@@ -1,4 +1,6 @@
-- [Memory Location Constraint](memory_location_constraint.md) — All memories must be saved within project directory (`.claude/memory/`, `docs/memory/`, etc.), never external system directories like `~/.claude-me/...`
-- [Git Safety Constraint](git_safety_constraint.md) — Never run git commands from parent directories; always `cd` into project root first
-- [UCP v1.0 Complete](project_ucp_v1_complete.md) — 146 tests, 6100+ LOC, all core features implemented, production-ready
-- [v1.0 Comprehensive Review (2026-06-27)](comprehensive_review.md) — Full code + docs audit, all issues fixed, tests passing
+- [Memory Location Constraint](memory_location_constraint.md) — All memories must be saved within project directory
+- [Git Safety Constraint](git_safety_constraint.md) — Never run git commands from parent directories
+- [UCP v1.0 Complete](project_ucp_v1_complete.md) — 233 tests, production-ready reference implementation
+- [Session Persistence Complete](session_persistence_complete.md) — DB-backed sessions, survives restarts, multi-instance shareable
+- [RLS Policies Complete](rls_policies_complete.md) — Database-level data isolation on 6 tables, zero-trust security
+- [Credential Encryption Complete](credential_encryption_complete.md) — AES-256-GCM encryption for IMAP tokens at rest

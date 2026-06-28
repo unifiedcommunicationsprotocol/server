@@ -11,6 +11,36 @@ import (
 	"github.com/unifiedcommunicationsprotocol/server/internal/models"
 )
 
+// Context key for storing the authenticated user address (for RLS policies)
+type contextKey string
+
+const userAddressKey contextKey = "user_address"
+
+// WithUserAddress returns a new context with the user address set for RLS policies.
+func WithUserAddress(ctx context.Context, address string) context.Context {
+	return context.WithValue(ctx, userAddressKey, address)
+}
+
+// getUserAddress retrieves the user address from context (for RLS policies).
+func getUserAddress(ctx context.Context) string {
+	addr, ok := ctx.Value(userAddressKey).(string)
+	if !ok {
+		return ""
+	}
+	return addr
+}
+
+// setRLSUserContext sets the Postgres session variable for RLS policy enforcement.
+// Must be called before executing queries that need RLS.
+func (s *Store) setRLSUserContext(ctx context.Context) error {
+	addr := getUserAddress(ctx)
+	if addr == "" {
+		// If no user is set, queries will return no rows (safe default)
+		return s.db.QueryRowContext(ctx, "SELECT set_config('app.current_user_addr', '', false)").Err()
+	}
+	return s.db.QueryRowContext(ctx, "SELECT set_config('app.current_user_addr', $1, false)", addr).Err()
+}
+
 // Store encapsulates all database operations.
 type Store struct {
 	db *sql.DB
@@ -18,7 +48,6 @@ type Store struct {
 
 // New creates a new Store with an open database connection.
 func New(dsn string) (*Store, error) {
-	fmt.Printf("DEBUG: Connecting with DSN: %s\n", dsn)
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		return nil, fmt.Errorf("open database: %w", err)
@@ -105,7 +134,13 @@ func (s *Store) GetMessage(ctx context.Context, messageID models.ULID) (*models.
 }
 
 // GetThreadMessages retrieves all messages in a thread, ordered by server_ts.
+// RLS policies limit results to messages where the user is a recipient (enforced by Postgres).
 func (s *Store) GetThreadMessages(ctx context.Context, threadID models.ULID) ([]*models.UCPEnvelope, error) {
+	// Set up RLS context
+	if err := s.setRLSUserContext(ctx); err != nil {
+		// Non-fatal; RLS will still enforce if user is set
+	}
+
 	const query = `
 	SELECT id, thread_id, from_addr, to_addrs, signing_key, server_ts
 	FROM messages
@@ -180,7 +215,13 @@ func (s *Store) StoreIdentity(ctx context.Context, identity *models.Identity) er
 }
 
 // GetIdentity retrieves an identity by address.
+// Only accessible if the authenticated user is the identity owner (enforced by RLS).
 func (s *Store) GetIdentity(ctx context.Context, address string) (*models.Identity, error) {
+	// Set up RLS context
+	if err := s.setRLSUserContext(ctx); err != nil {
+		// Non-fatal; RLS will still enforce if user is set
+	}
+
 	const query = `
 	SELECT address, identity_key, signing_keys_json, revocation_key, capabilities
 	FROM identities
@@ -227,6 +268,7 @@ func (s *Store) CreateSession(ctx context.Context, address string, token string,
 }
 
 // GetSession retrieves a session by token.
+// Sessions are not RLS-protected at read time (public lookup for auth), but protected at management time.
 func (s *Store) GetSession(ctx context.Context, token string) (address string, err error) {
 	const query = `
 	SELECT address FROM sessions
@@ -320,4 +362,56 @@ func marshalSigningKeys(keys []models.SigningKey) (string, error) {
 func unmarshalSigningKeys(jsonStr string) ([]models.SigningKey, error) {
 	// TODO: implement proper JSON unmarshaling
 	return []models.SigningKey{}, nil
+}
+
+// StoreEncryptedCredential stores an encrypted credential (e.g., IMAP auth token) for a bridge account.
+// The encryptor should encrypt plaintext before calling this method.
+func (s *Store) StoreEncryptedCredential(ctx context.Context, accountID string, address string, imapHost string, imapPort int, imapUsername string, encryptedToken string) error {
+	// Set up RLS context
+	if err := s.setRLSUserContext(ctx); err != nil {
+		// Non-fatal
+	}
+
+	const query = `
+	INSERT INTO bridge_imap_accounts (id, address, imap_host, imap_port, imap_username, auth_token, last_sync)
+	VALUES ($1, $2, $3, $4, $5, $6, NULL)
+	ON CONFLICT (id) DO UPDATE SET
+		imap_host = $3,
+		imap_port = $4,
+		imap_username = $5,
+		auth_token = $6,
+		updated_at = NOW()
+	`
+
+	_, err := s.db.ExecContext(ctx, query, accountID, address, imapHost, imapPort, imapUsername, encryptedToken)
+	if err != nil {
+		return fmt.Errorf("store credential: %w", err)
+	}
+
+	return nil
+}
+
+// GetEncryptedCredential retrieves an encrypted credential for a bridge account.
+// Caller is responsible for decryption using the same encryptor.
+func (s *Store) GetEncryptedCredential(ctx context.Context, accountID string) (address, imapHost string, imapPort int, imapUsername, encryptedToken string, err error) {
+	// Set up RLS context
+	if err := s.setRLSUserContext(ctx); err != nil {
+		// Non-fatal
+	}
+
+	const query = `
+	SELECT address, imap_host, imap_port, imap_username, auth_token
+	FROM bridge_imap_accounts
+	WHERE id = $1
+	`
+
+	err = s.db.QueryRowContext(ctx, query, accountID).Scan(&address, &imapHost, &imapPort, &imapUsername, &encryptedToken)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return "", "", 0, "", "", fmt.Errorf("credential not found")
+		}
+		return "", "", 0, "", "", fmt.Errorf("query credential: %w", err)
+	}
+
+	return address, imapHost, imapPort, imapUsername, encryptedToken, nil
 }
