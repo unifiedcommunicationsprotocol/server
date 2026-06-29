@@ -26,7 +26,7 @@ bun install
 # Start dev server (hot reload)
 bun run dev
 
-# Open http://localhost:5173 in your browser
+# Open http://localhost:6002 in your browser
 ```
 
 ### Production Build
@@ -214,9 +214,9 @@ Compiles React + TypeScript + Tailwind into `dist/index.html` + bundles (~210 KB
 bun run dev
 ```
 
-- Hono server on `http://localhost:5173`
+- Hono server on `http://localhost:6002`
 - Hot reload on file changes
-- Calls UCP Server at `localhost:5150` (or uses mocks if offline)
+- Calls UCP Server at `localhost:6001` (or uses mocks if offline)
 - SPA rendered from `dist/`
 
 ### Type Checking
@@ -300,7 +300,7 @@ Required at runtime (in `.env.local` or via process):
 | `BETTER_AUTH_SECRET` | Yes | Session signing secret (min. 32 bytes, base64) |
 | `DATABASE_URL` | Yes | SQLite connection string (e.g., `sqlite://db/dashboard.db`) |
 | `NODE_ENV` | No | `development` or `production` (default: `development`) |
-| `PORT` | No | Server listen port (default: `5173` dev, `3000` prod) |
+| `PORT` | No | Server listen port (default: `6002` dev, `3000` prod) |
 
 Example `.env.local`:
 
@@ -362,7 +362,7 @@ bun build --compile --target=bun src/index.ts --outfile=dashboard
 ./dashboard  # Single 50 MB executable
 ```
 
-Runs on `:5173`, calls UCP Server at `:5150`.
+Runs on `:6002`, calls UCP Server at `:6001`.
 
 ### Deployment Steps
 

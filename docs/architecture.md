@@ -8,48 +8,57 @@ UCP Server is a reference implementation of the Unified Communications Protocol 
 
 ```
 ┌─────────────────────────────────────────────────────────────┐
-│                      UCP Server                             │
-├─────────────────────────────────────────────────────────────┤
+│                   UCP Server (Single Binary)                │
 │                                                             │
-│  ┌──────────────────────────────────────────────────────┐  │
-│  │  Transport Layer (net/http + WebSocket/WebTransport)│  │
-│  │  ├─ Connection negotiation (version, capabilities)  │  │
-│  │  ├─ Session authentication (challenge-response)     │  │
-│  │  └─ Persistent connection state management          │  │
-│  └──────┬───────────────────────────────────────────────┘  │
+│  ┌────────────────────────────────────────────────────┐   │
+│  │  HTTP Server (net/http, port :6001)                │   │
+│  │  ├─ Static files: React dashboard (embedded)       │   │
+│  │  │   └─ SPA routing with index.html fallback       │   │
+│  │  └─ API & WebSocket endpoints                      │   │
+│  └──────────────┬─────────────────────────────────────┘   │
+│                 │                                           │
+│  ┌──────────────▼──────────────────────────────────────┐  │
+│  │  Transport Layer (WebSocket + WebTransport)        │  │
+│  │  ├─ Connection negotiation (version, capabilities) │  │
+│  │  ├─ Session authentication (challenge-response)    │  │
+│  │  └─ Persistent connection state management         │  │
+│  └──────┬─────────────────────────────────────────────┘  │
 │         │                                                   │
 │  ┌──────▼──────────────────────────────────────────────┐  │
-│  │  Request Router & Middleware                        │  │
-│  │  ├─ Auth validation (session token, signing key)    │  │
-│  │  ├─ Rate limiting                                   │  │
-│  │  └─ Request dispatch (API, federation, bridge)      │  │
-│  └──┬──────────┬──────────────────┬──────────┬──────────┘  │
-│     │          │                  │          │              │
-│  ┌──▼──┐  ┌──▼──┐  ┌──────────┐ ┌─▼──┐  ┌──▼────┐         │
-│  │ API │  │Feder│  │  Bridge  │ │ AI │  │  Auth │         │
-│  │     │  │ation│  │ (IMAP/   │ │Proc│  │       │         │
-│  │     │  │     │  │  SMTP)   │ │ess │  │       │         │
-│  └──┬──┘  └──┬──┘  └────┬─────┘ └─┬──┘  └───┬───┘         │
-│     │       │           │        │          │              │
+│  │  Request Router & Middleware                       │  │
+│  │  ├─ Auth validation (session token, signing key)   │  │
+│  │  ├─ Rate limiting (per-domain)                     │  │
+│  │  └─ Request dispatch (API, federation, bridge)     │  │
+│  └──┬──────────┬──────────────────┬──────────┬────────┘  │
+│     │          │                  │          │             │
+│  ┌──▼──┐  ┌──▼──┐  ┌──────────┐ ┌─▼──┐  ┌──▼────┐       │
+│  │ API │  │Feder│  │  Bridge  │ │ AI │  │  Auth │       │
+│  │ (11 │  │ ation│  │ (IMAP/   │ │Proc│  │       │       │
+│  │ end)│  │     │  │  SMTP)   │ │ess │  │       │       │
+│  └──┬──┘  └──┬──┘  └────┬─────┘ └─┬──┘  └───┬───┘       │
+│     │       │           │        │          │             │
 │  ┌──▼───────▼───────────▼────────▼──────────▼──────────┐  │
-│  │  Crypto Layer (MLS RFC 9420)                        │  │
+│  │  Crypto Layer (MLS RFC 9420, pure Go)             │  │
 │  │  ├─ Group creation & membership                     │  │
 │  │  ├─ Message encryption/decryption                   │  │
 │  │  ├─ Epoch advancement & key rotation               │  │
-│  │  └─ Key package management                          │  │
+│  │  ├─ Key package management                          │  │
+│  │  └─ Zero-knowledge relay (unless user opts in)     │  │
 │  └──────────┬───────────────────────────────────────────┘  │
 │             │                                               │
 │  ┌──────────▼───────────────────────────────────────────┐  │
 │  │  Store Layer (Message & Identity)                   │  │
-│  │  ├─ Message envelope storage (encrypted)            │  │
+│  │  ├─ Message envelope storage (encrypted, indexed)   │  │
 │  │  ├─ Identity records (keys, DNS metadata)           │  │
-│  │  ├─ Session & token management                      │  │
-│  │  └─ Indexes (thread_id, to/from, server_ts)         │  │
+│  │  ├─ Session & token management (persistent)         │  │
+│  │  ├─ Federation connection state & retry queue       │  │
+│  │  └─ Row-level security (each identity isolated)     │  │
 │  └──────────┬───────────────────────────────────────────┘  │
 │             │                                               │
 │         ┌───▼────────────────┐                            │
 │         │   Postgres 18+     │                            │
-│         │  (persistence)     │                            │
+│         │  (14 tables)        │                            │
+│         │  (RLS enabled)      │                            │
 │         └────────────────────┘                            │
 │                                                             │
 └─────────────────────────────────────────────────────────────┘
@@ -58,8 +67,38 @@ External (Federation):
 ┌──────────────┐          ┌──────────────┐
 │ Remote UCP   │◄────────►│ This Server  │
 │ Server       │ Mutual   │ (federation) │
-└──────────────┘ auth     └──────────────┘
+│              │ Ed25519  │              │
+│              │ auth     │              │
+└──────────────┘          └──────────────┘
 ```
+
+## Frontend Architecture (Embedded)
+
+The React admin dashboard is compiled and embedded in the Go binary via `//go:embed`:
+
+```
+React Components (www/src/components/)
+├─ Dashboard (router, tabs)
+├─ Overview (stats, implementation status)
+├─ APIExplorer (endpoint tester with bearer token)
+├─ Identity (server key, address resolution)
+├─ Sessions (active sessions, auth flow)
+├─ Federation (connection stats, delivery queue)
+└─ Bridge (IMAP accounts, threading map)
+        │
+        ├─→ API Client (www/src/api/handlers.ts)
+        │   └─ Calls localhost:6001/api/* and /.well-known/*
+        │
+        └─→ Go Binary Static Handler (cmd/ucp-server/main.go)
+            └─ serveIndexFallback() — SPA routing
+```
+
+The compiled React assets (210 KB gzipped) live in `cmd/ucp-server/public/` and are embedded in the Go binary at build time. Request flow:
+1. Browser requests `/` → Go serves `public/index.html`
+2. React app loads, initializes dashboard tabs
+3. Dashboard calls API endpoints at `/api/*`
+4. Go handlers respond with JSON
+5. React renders results (or mock data if server offline)
 
 ## Transport Layer Detail
 
@@ -122,30 +161,37 @@ External (Federation):
 
 | Package | Responsibility |
 |---------|---|
-| `transport` | WebSocket/WebTransport connection negotiation, `UCPHello` handshake, frame encoding/decoding |
+| `transport` | WebSocket/WebTransport connection negotiation, `UCPHello` handshake, frame encoding/decoding, keepalive |
 | `identity` | Ed25519 keypair generation, DNS TXT record parsing, signing key lifecycle, well-known endpoint responses |
 | `crypto` | MLS group creation/state, envelope encryption/decryption, epoch advancement, KeyPackage validation |
-| `router` | Federation connection state, message routing to local/remote recipients, retry/bounce logic |
-| `store` | Postgres schema, message/identity/session/token persistence, indexes, transaction handling |
-| `bridge` | IMAP connection pooling, SMTP inbound parsing, HTML↔blocks conversion, IMAP/SMTP header mapping |
+| `crypto/mls` | RFC 9420 state machine, serialization, tree operations, encryption, proposals, welcome messages (3,573 LOC) |
+| `router` | Federation connection state, message routing to local/remote recipients, retry/bounce logic, exponential backoff |
+| `store` | Postgres schema (14 tables), message/identity/session/token persistence, indexes, RLS, transaction handling |
+| `bridge` | IMAP connection pooling, SMTP inbound parsing, HTML↔blocks conversion, IMAP/SMTP header mapping, attestation |
 | `ai` | Local client inference schema, server processing key derivation, opt-in decryption, stale key share handling |
-| `api` | HTTP endpoint handlers, well-known routes, request validation, session token verification |
-| `auth` | Challenge generation, signature verification, session token issuance/refresh/revocation |
+| `api` | HTTP endpoint handlers (11 total), well-known routes, request validation, session token verification, static file serving |
+| `auth` | Challenge generation, signature verification, session token issuance/refresh/revocation, persistence |
+| `logging` | Structured logging with JSON output |
+| `ratelimit` | Per-domain rate limiting, request throttling |
 | `models` | Type definitions (Message, Envelope, Identity, KeyPackage, etc.) — protocol-aligned structs |
+| `cmd/ucp-server` | Server entry point, embedded React dashboard via `//go:embed`, HTTP server initialization |
+| `www` (React) | Admin dashboard UI (6 tabs), TypeScript API client, Tailwind styling, SPA routing |
 
 ## Key Design Decisions
 
 | Decision | Choice | Rationale |
 |----------|--------|-----------|
-| Language | Go 1.23+ | Single binary, cross-compile, no cgo, no runtime dependencies |
+| Language (API) | Go 1.23+ | Single binary, cross-compile, no cgo, no runtime dependencies |
 | HTTP Transport | `net/http` (stdlib) | Minimal dependencies, direct handler composition, WebSocket via stdlib upgrade |
-| Database | Postgres 18+ | Enterprise-grade durability, JSONB for flexible metadata, row-level constraints for security |
-| SQL Access | TBD: sqlc or pgx | Code generation (sqlc) or driver (pgx); no ORM |
-| MLS Library | TBD | Must implement RFC 9420 exactly; evaluate mlspp bindings vs pure Go |
+| Frontend | React 19 + TypeScript | Rich interactive dashboard, modern SPA, easily embeddable in Go binary |
+| Database | Postgres 18+ | Enterprise-grade durability, JSONB for flexible metadata, row-level security for multi-tenancy |
+| SQL Access | stdlib `database/sql` + manual queries | Explicit, auditable SQL; no ORM magic; fast and lightweight |
+| MLS Implementation | Pure-Go RFC 9420 | Fully spec-compliant, no cgo, single binary, extractable as future `go-mls` module |
+| Dashboard Embedding | Go `//go:embed` + SPA routing | Single binary serves API + UI; compile time asset inclusion; no runtime file dependencies |
 | Federation | Persistent connections | Stateful federation connections per remote domain reduce handshake overhead |
 | Bridge | First-class subsystem | IMAP/SMTP conversion on server, not client — adoption path for legacy email users |
-| Secrets Management | Environment variables at startup | No runtime config; typed struct injection into handlers |
-| Deployment | Single binary + Postgres | Operationally simple; stateless (federation state is ephemeral) |
+| Secrets Management | Environment variables at startup | No runtime config; typed struct injection into handlers; secure, auditable |
+| Deployment | Single binary + Postgres | Operationally simple; stateless (federation state is ephemeral); runs on minimal VPS |
 
 Full decision records: `docs/decisions.md`
 
@@ -226,4 +272,4 @@ This ensures: (1) no duplicate threads if sender retries after crash, (2) no thr
 
 ---
 
-*Last updated: 2026-06-26*
+*Last updated: 2026-06-29*

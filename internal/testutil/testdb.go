@@ -19,7 +19,7 @@ type TestDB struct {
 
 // SetupTestDB creates a new test database connection and clears all tables.
 func SetupTestDB(t *testing.T) *TestDB {
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	db, err := sql.Open("postgres", dsn)
 	if err != nil {
 		t.Fatalf("failed to connect to test database: %v", err)

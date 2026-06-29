@@ -6,9 +6,9 @@ The UCP Admin Dashboard is a full-stack web application for server operators. It
 
 1. **React Frontend (SPA)** — 6-tab dashboard UI built with React 19 + Tailwind CSS v4
 2. **Hono API Server** — Bun-based HTTP server that serves the SPA and relays API calls
-3. **UCP Server Backend** — Go server at `:5150` providing `/api/*` and `/.well-known/*` endpoints
+3. **UCP Server Backend** — Go server at `:6001` providing `/api/*` and `/.well-known/*` endpoints
 
-The frontend makes real HTTP calls to the UCP Server at `localhost:5150`. If the server is unreachable, the dashboard falls back to mock responses (useful for development/testing).
+The frontend makes real HTTP calls to the UCP Server at `localhost:6001`. If the server is unreachable, the dashboard falls back to mock responses (useful for development/testing).
 
 ## Component Map
 
@@ -55,7 +55,7 @@ The frontend makes real HTTP calls to the UCP Server at `localhost:5150`. If the
                  ▼
         ┌─────────────────────┐
         │  Hono Server (Bun)  │
-        │  :5173              │
+        │  :6002              │
         │                     │
         │  ├─ Serves SPA      │
         │  └─ Proxy API calls │
@@ -64,7 +64,7 @@ The frontend makes real HTTP calls to the UCP Server at `localhost:5150`. If the
                  ▼
         ┌──────────────────────────┐
         │  UCP Server (Go)         │
-        │  :5150                   │
+        │  :6001                   │
         │                          │
         │  ├─ /api/*               │
         │  │  ├─ POST /message/send│
@@ -106,7 +106,7 @@ The frontend makes real HTTP calls to the UCP Server at `localhost:5150`. If the
 3. User modifies body (if POST)
 4. User clicks "Send" button
 5. `handleSend()` calls `apiCall(method, path, body, sessionToken)`
-6. API client fetches from `localhost:5150 + path` with 3-5s timeout
+6. API client fetches from `localhost:6001 + path` with 3-5s timeout
 7. Response displayed as JSON
 8. If timeout/error → falls back to mock response
 

@@ -37,14 +37,14 @@ go build -o ucp-server ./cmd/ucp-server
 ./ucp-server
 ```
 
-Server listens on `:5150` (set via `API_PORT` env var). Test it:
+Server listens on `:6001` (set via `API_PORT` env var). Test it:
 
 ```bash
 # Get server key
-curl http://localhost:5150/.well-known/ucp/server-key
+curl http://localhost:6001/.well-known/ucp/server-key
 
 # Request auth challenge
-curl -X POST http://localhost:5150/auth/challenge \
+curl -X POST http://localhost:6001/auth/challenge \
   -H "Content-Type: application/json" \
   -d '{"address":"alice@example.com"}'
 ```
@@ -135,7 +135,7 @@ export API_URL="ucp.example.com"
 With Caddy TLS:
 ```caddy
 ucp.example.com {
-  reverse_proxy localhost:5150
+  reverse_proxy localhost:6001
 }
 ```
 

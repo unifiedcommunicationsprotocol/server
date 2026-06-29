@@ -26,14 +26,14 @@ Full audit of:
 
 **Issues:**
 - Lines 119-120: Referenced outdated env vars `UCP_DATABASE_URL` and `UCP_SERVER_DOMAIN`
-- Line 127: Caddy reverse proxy pointed to `localhost:8080` instead of `:5150`
+- Line 127: Caddy reverse proxy pointed to `localhost:8080` instead of `:6001`
 
 **Root Cause:** Env var names changed during earlier updates but README.md not updated
 
 **Fix Applied:**
 - Line 119: `UCP_DATABASE_URL` → `DATABASE_URL`
 - Line 120: `UCP_SERVER_DOMAIN` → `API_URL`
-- Line 127: `localhost:8080` → `localhost:5150`
+- Line 127: `localhost:8080` → `localhost:6001`
 
 **Status:** ✅ Fixed
 

@@ -33,7 +33,7 @@
   - Generic apiCall() for all endpoints
 
 - **Live Server Calls**
-  - Calls localhost:5150 on all requests
+  - Calls localhost:6001 on all requests
   - 3-5 second timeout per request
   - Automatic mock fallback if server unreachable
   - JSON response parsing + status display
@@ -57,10 +57,10 @@
 cd www
 bun install          # Already done
 bun run build        # Already done
-bun run dev          # Starts server on :5173
+bun run dev          # Starts server on :6002
 ```
 
-Then visit: **http://localhost:5173**
+Then visit: **http://localhost:6002**
 
 ### Production Binary
 ```bash
@@ -74,7 +74,7 @@ bun build --compile --target=bun src/index.ts --outfile=dashboard
 ┌─────────────────────────────────────┐
 │  React SPA (Dashboard)              │
 │  - 6 tabs with real-time data       │
-│  - Real API calls to :5150          │
+│  - Real API calls to :6001          │
 └──────────────┬──────────────────────┘
                │
                │ HTTP
@@ -82,7 +82,7 @@ bun build --compile --target=bun src/index.ts --outfile=dashboard
          ┌───────────────┐
          │ Hono Server   │
          │ (Bun)         │
-         │ :5173         │
+         │ :6002         │
          └───────────────┘
                │
                │ HTTP
@@ -90,7 +90,7 @@ bun build --compile --target=bun src/index.ts --outfile=dashboard
          ┌───────────────┐
          │ UCP Server    │
          │ (Go)          │
-         │ :5150         │
+         │ :6001         │
          │ /api/*        │
          │ /.well-known/*
          └───────────────┘
@@ -160,7 +160,7 @@ www/
 
 ### Immediate (Quick Wins)
 1. Start dev server: `bun run dev`
-2. Test against actual UCP Server at :5150
+2. Test against actual UCP Server at :6001
 3. Verify all endpoint responses
 4. Add error toasts/notifications
 
@@ -188,18 +188,18 @@ www/
 → TypeScript caching. Run `bun run build` or restart IDE.
 
 **"Server not responding"**
-→ Make sure UCP Go server is running on :5150. Dashboard shows "offline" status and uses mocks.
+→ Make sure UCP Go server is running on :6001. Dashboard shows "offline" status and uses mocks.
 
-**"Port 5173 already in use"**
+**"Port 6002 already in use"**
 → Change in src/index.ts: `const port = parseInt(process.env.PORT || '3000');` then `PORT=3000 bun run dev`
 
 ## Testing Checklist
 
 - [ ] Dev server starts without errors
-- [ ] Dashboard loads on http://localhost:5173
+- [ ] Dashboard loads on http://localhost:6002
 - [ ] All 6 tabs render correctly
 - [ ] Sidebar navigation works
-- [ ] API Explorer sends requests to :5150
+- [ ] API Explorer sends requests to :6001
 - [ ] Mock responses show when server offline
 - [ ] Bearer token input appears on explorer tab only
 - [ ] Tables render with mock data
@@ -226,7 +226,7 @@ FROM oven/bun:latest
 WORKDIR /app
 COPY www /app
 RUN bun install && bun run build
-EXPOSE 5173
+EXPOSE 6002
 CMD ["bun", "run", "dev"]
 ```
 

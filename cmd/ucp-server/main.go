@@ -131,16 +131,16 @@ type config struct {
 }
 
 func loadConfig() config {
-	dbURL := getEnv("DATABASE_URL", "postgres://localhost/ucp")
+	dbURL := getEnv("DATABASE_URL", "postgres://localhost:6432/ucp")
 	// Convert postgres:// URL to keyword/value format for pq
 	// postgres://user:pass@host:port/db?sslmode=disable → user=X password=Y host=Z port=N dbname=...
 	if strings.HasPrefix(dbURL, "postgres://") {
 		dbURL = convertPgURL(dbURL)
 	}
 	return config{
-		Listen:       getEnv("API_PORT", ":5150"),
+		Listen:       getEnv("API_PORT", ":6001"),
 		DatabaseURL: dbURL,
-		ServerDomain: getEnv("API_URL", "localhost:5150"),
+		ServerDomain: getEnv("API_URL", "localhost:6001"),
 		ServerKey:    getEnv("UCP_SERVER_KEY", ""),
 	}
 }
@@ -182,7 +182,7 @@ func convertPgURL(pgURL string) string {
 		port = hostport[idx+1:]
 	} else {
 		host = hostport
-		port = "5432"
+		port = "6432"
 	}
 
 	// Extract dbname and params

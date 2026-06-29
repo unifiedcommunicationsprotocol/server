@@ -397,7 +397,7 @@ describe("getStats", () => {
 
     const stats = await getStats();
     expect(stats.messageCount).toBe(1234);
-    expect(mockFetch).toHaveBeenCalledWith("http://localhost:5150/api/stats");
+    expect(mockFetch).toHaveBeenCalledWith("http://localhost:6001/api/stats");
   });
 });
 ```

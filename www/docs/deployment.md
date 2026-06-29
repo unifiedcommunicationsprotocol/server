@@ -8,13 +8,13 @@ The admin dashboard can be deployed in two ways:
 Single binary serves dashboard + API. Simplest deployment.
 
 ### Option 2: Standalone Bun Server
-Separate process, easier development iteration. Calls UCP Server at `:5150`.
+Separate process, easier development iteration. Calls UCP Server at `:6001`.
 
 ## Environments
 
 | Environment | URL | Setup | Deploy |
 |-------------|-----|-------|--------|
-| Development | `http://localhost:5173` | Standalone Bun | `bun run dev` |
+| Development | `http://localhost:6002` | Standalone Bun | `bun run dev` |
 | Production | `https://admin.ucp.example.com` | Embedded in Go | `go build ./cmd/ucp-server` |
 
 ## Embedding in Go Server (Production)
@@ -66,7 +66,7 @@ func main() {
     http.HandleFunc("/auth/challenge", handleChallenge)
     // ... rest of API routes ...
 
-    port := ":5150"
+    port := ":6001"
     log.Printf("🚀 UCP Server with Admin Dashboard running on %s\n", port)
     log.Fatal(http.ListenAndServe(port, nil))
 }
@@ -102,7 +102,7 @@ Binary size: ~15-20 MB (Go binary only, React embedded)
 
 ### Single Process (Alternative)
 
-Dashboard served by Bun binary on port `5173`. Caddy reverse proxy on port `443` handles TLS (optional).
+Dashboard served by Bun binary on port `6002`. Caddy reverse proxy on port `443` handles TLS (optional).
 
 ```
 User → HTTPS (port 443, Caddy)
@@ -125,7 +125,7 @@ If dashboard runs on separate server than UCP API:
 ├──────────────────────────┤         ├──────────────────────────┤
 │ Caddy (443)              │         │ Caddy (443)              │
 ├──────────────────────────┤         ├──────────────────────────┤
-│ Dashboard Bun (3000)     │         │ UCP Server Go (5150)     │
+│ Dashboard Bun (3000)     │         │ UCP Server Go (6001)     │
 │ - React SPA              │         │ - /api/ucp/*             │
 │ - Auth (Better Auth)     │         │ - /api/well-known/*      │
 │ - SQLite session store   │         │ - Message routing        │

@@ -4,7 +4,7 @@ export interface APIConfig {
 }
 
 const defaultConfig: APIConfig = {
-  baseUrl: 'http://localhost:5150',
+  baseUrl: 'http://localhost:6001',
   timeout: 5000,
 };
 

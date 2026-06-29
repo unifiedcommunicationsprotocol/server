@@ -17,7 +17,7 @@ func TestStoreNew(t *testing.T) {
 		t.Skip("Skipping integration test (set TEST_POSTGRES=1 to enable)")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -35,7 +35,7 @@ func TestStoreIdentity(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -83,7 +83,7 @@ func TestStoreIdentityNotFound(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -103,7 +103,7 @@ func TestStoreMessage(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -147,7 +147,7 @@ func TestStoreClose(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -171,7 +171,7 @@ func TestStoreMultipleIdentities(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -226,7 +226,7 @@ func TestStoreIdentityUpdate(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -279,7 +279,7 @@ func TestGetThreadMessages(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -341,7 +341,7 @@ func TestGetThreadMessagesEmpty(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -370,7 +370,7 @@ func TestCreateAndGetSession(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -416,7 +416,7 @@ func TestRevokeSession(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -473,7 +473,7 @@ func TestSessionExpiry(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -515,7 +515,7 @@ func TestStoreAndGetAttachment(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -566,7 +566,7 @@ func TestGetAttachmentNotFound(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -591,7 +591,7 @@ func TestMultipleAttachments(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -658,7 +658,7 @@ func TestMessageIdempotency(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)
@@ -718,7 +718,7 @@ func TestIdentityCapabilities(t *testing.T) {
 		t.Skip("Skipping integration test")
 	}
 
-	dsn := "user=postgres password=dev host=localhost port=5555 dbname=ucp sslmode=disable"
+	dsn := "user=postgres password=dev host=localhost port=6432 dbname=ucp sslmode=disable"
 	s, err := New(dsn)
 	if err != nil {
 		t.Fatalf("Failed to connect: %v", err)

@@ -163,7 +163,7 @@ At runtime, the app reads from `.env.local` (dev) or `.env.production` (deployed
 | `BETTER_AUTH_SECRET` | Yes | Session signing key (32+ bytes, base64) |
 | `DATABASE_URL` | Yes | SQLite connection (`sqlite:///path/to/db.db` or `sqlite://db/test.db`) |
 | `NODE_ENV` | No | `development` or `production` (default: `development`) |
-| `PORT` | No | HTTP listen port (default: `5173` dev, `3000` prod) |
+| `PORT` | No | HTTP listen port (default: `6002` dev, `3000` prod) |
 
 Never commit `.env` files. Document variable names in `docs/deployment.md` only.
 
@@ -173,7 +173,7 @@ Never commit `.env` files. Document variable names in `docs/deployment.md` only.
 
 ```bash
 # Development
-bun run dev              # Start dev server (hot reload, port 5173)
+bun run dev              # Start dev server (hot reload, port 6002)
 
 # Type checking
 bun run typecheck        # Type-check via tsgo (runs in CI)

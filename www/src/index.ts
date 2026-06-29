@@ -47,7 +47,7 @@ app.get('/*', async (c) => {
   `);
 });
 
-const port = parseInt(process.env.PORT || '5173');
+const port = parseInt(process.env.PORT || '6002');
 console.log(`🚀 Admin Dashboard listening on http://localhost:${port}`);
 
 export default {

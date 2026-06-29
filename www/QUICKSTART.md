@@ -4,7 +4,7 @@
 
 ✅ **Complete React UI** matching the design 1:1
 - 6 tabs: Overview, API Explorer, Identity, Sessions, Federation, Bridge
-- Real API integration (calls localhost:5150)
+- Real API integration (calls localhost:6001)
 - Mock responses fallback
 - Full state management
 
@@ -22,7 +22,7 @@ This compiles React + TypeScript + Tailwind into `dist/index.html` + JS bundles.
 bun run dev
 ```
 
-Starts Hono server on `http://localhost:5173` with hot reload.
+Starts Hono server on `http://localhost:6002` with hot reload.
 
 ### Production build
 ```bash
@@ -44,7 +44,7 @@ src/
   │       ├── tabs/          ← 6 screen components
   │       └── primitives/    ← Reusable widgets
   ├── api/
-  │   └── handlers.ts        ← API client (calls localhost:5150)
+  │   └── handlers.ts        ← API client (calls localhost:6001)
   └── styles/
       └── globals.css        ← Tailwind theme + animations
 
@@ -54,7 +54,7 @@ index.html                    ← SPA shell
 
 ## API Integration
 
-The dashboard connects to the UCP Server at `localhost:5150`:
+The dashboard connects to the UCP Server at `localhost:6001`:
 
 - **Server Status:** Calls `GET /.well-known/ucp/server-key` on load
 - **API Explorer:** Live requests to all 11 endpoints

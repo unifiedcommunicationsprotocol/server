@@ -17,13 +17,19 @@
 - ✅ **Postgres Row-Level Security (RLS)** (database enforces user-level data isolation)
 - ✅ **Credential encryption** (AES-256-GCM for IMAP tokens at rest)
 
-**Test Coverage (233 total tests):**
+**Test Coverage (233 total test cases):**
 - **Phase 1 (API):** 8 E2E tests — message send/receive, attachments, auth
 - **Phase 2 (WebSocket):** 13 sync tests — connections, subscriptions, broadcasting
 - **Phase 3 (Federation):** 12 routing tests — multi-domain delivery, retry logic
 - **Phase 4 (Security):** 12 auth tests — sessions, persistence, validation, revocation
-- **Existing:** 188+ tests across all packages
-- All critical paths tested: challenge-response, Ed25519 signatures, sessions, persistence, encryption, federation
+- **Core Packages:** 188+ unit tests across all packages (crypto, auth, router, bridge, etc.)
+- All critical paths tested: challenge-response, Ed25519 signatures, sessions, persistence, MLS encryption, federation
+
+**Running Tests:**
+```bash
+go test ./...                   # All tests (197 pass without database)
+TEST_POSTGRES=1 go test ./...   # All tests including integration tests
+```
 
 **Launch Ready:** All three core flows verified. All security hardening complete. Production deployment ready.
 
@@ -35,17 +41,25 @@
 |---------|---------|--------|
 | `internal/models` | UCP protocol types (Envelope, Message, Attachment, Identity) | ✅ Complete |
 | `internal/auth` | Challenge-response auth, session tokens, Ed25519 signing | ✅ Complete |
-| `internal/crypto/mls` | MLS encryption framework (RFC 9420 architecture); full implementation in progress | 🚧 In Progress |
+| `internal/crypto/mls` | Pure-Go RFC 9420 implementation (3,573 LOC, 47 tests) | ✅ Complete |
 | `internal/identity` | DNS-anchored identity, keypair management | ✅ Complete |
-| `internal/store` | Postgres persistence for all entities | ✅ Complete |
-| `internal/transport` | WebSocket/HTTP keepalive, connection management | ✅ Complete |
-| `internal/api` | HTTP endpoint handlers for UCP | ✅ Complete |
-| `internal/router` | Federation, message routing to local/remote | ✅ Complete |
-| `internal/bridge` | IMAP/SMTP bridge, threading, HTML↔blocks | ✅ Complete |
+| `internal/store` | Postgres persistence (14 tables, RLS enabled) | ✅ Complete |
+| `internal/transport` | WebSocket/HTTP keepalive, connection management, SyncHub | ✅ Complete |
+| `internal/api` | HTTP endpoint handlers (11 total) + static file serving | ✅ Complete |
+| `internal/router` | Federation, message routing to local/remote, retry queue | ✅ Complete |
+| `internal/bridge` | IMAP/SMTP bridge, threading, HTML↔blocks, attestation | ✅ Complete |
 | `internal/ai` | AI metadata (summaries, embeddings, categories) | ✅ Complete |
-| `cmd/ucp-server` | HTTP server entry point | ✅ Complete |
+| `internal/logging` | Structured JSON logging | ✅ Complete |
+| `internal/ratelimit` | Per-domain rate limiting | ✅ Complete |
+| `cmd/ucp-server` | HTTP server entry point, embedded React dashboard | ✅ Complete |
+| `www` | React admin dashboard (6 tabs, TypeScript API client) | ✅ Complete |
 
 ### HTTP Endpoints (11 total)
+
+**Dashboard & Static Files:**
+- `GET /` — React admin dashboard (SPA, embedded in binary)
+- `GET /index.html` — SPA root (fallback for client-side routing)
+- `GET /assets/*` — Compiled React assets (CSS, JS, source maps)
 
 **Well-known Routes:**
 - `GET /.well-known/ucp/server-key` — Server public key
@@ -134,6 +148,7 @@ postgres 18+
 # Using docker compose (recommended)
 docker compose up -d
 
+# Postgres runs on port 6432 (mapped from container port 5432)
 # Schema is applied automatically on startup
 ```
 
@@ -143,17 +158,15 @@ docker compose up -d
 # Build single binary
 go build -o ucp-server ./cmd/ucp-server
 
-# Copy config template
-cp .env.example .env
-
-# Edit .env with your settings, then run
+# Config is read from .env (ports: API=6001, Postgres=6432)
 ./ucp-server
+# Visits http://localhost:6001 for dashboard + API
 ```
 
 **Environment Variables (.env):**
-- `API_PORT` — HTTP listen address (default: `:5150`)
-- `API_URL` — Server URL for federation (default: `localhost:5150`)
-- `DATABASE_URL` — Postgres connection string (default: `postgres://localhost/ucp`)
+- `API_PORT` — HTTP listen address (default: `:6001`)
+- `API_URL` — Server URL for federation (default: `localhost:6001`)
+- `DATABASE_URL` — Postgres connection string (default: `postgres://localhost:6432/ucp`)
 - `UCP_SERVER_KEY` — Ed25519 public key (base64, optional)
 
 ## API Usage Examples
@@ -162,7 +175,7 @@ cp .env.example .env
 
 ```bash
 # 1. Request challenge
-curl -X POST http://localhost:5150/auth/challenge \
+curl -X POST http://localhost:6001/auth/challenge \
   -H "Content-Type: application/json" \
   -d '{"address":"alice@example.com"}'
 # Returns: {"challenge":"base64_32bytes"}
@@ -171,7 +184,7 @@ curl -X POST http://localhost:5150/auth/challenge \
 # (Client signs the challenge bytes with their identity key)
 
 # 3. Redeem for session
-curl -X POST http://localhost:5150/auth/session \
+curl -X POST http://localhost:6001/auth/session \
   -H "Content-Type: application/json" \
   -d '{
     "address": "alice@example.com",
@@ -196,7 +209,7 @@ ENVELOPE=$(jq -Rs . <<< '{
   "mls": "base64_mls_ciphertext"
 }' | base64)
 
-curl -X POST http://localhost:5150/api/message/send \
+curl -X POST http://localhost:6001/api/message/send \
   -H "Content-Type: application/json" \
   -H "Authorization: Bearer $SESSION_TOKEN" \
   -d "{\"envelope\":\"$ENVELOPE\"}"
@@ -205,7 +218,7 @@ curl -X POST http://localhost:5150/api/message/send \
 ### Upload Attachment
 
 ```bash
-curl -X POST http://localhost:5150/api/content/upload \
+curl -X POST http://localhost:6001/api/content/upload \
   -H "Authorization: Bearer $SESSION_TOKEN" \
   -H "Content-Type: application/octet-stream" \
   -H "X-Filename: document.pdf" \
@@ -311,7 +324,7 @@ sudo systemctl start ucp-server
 ```
 ucp.example.com {
   encode gzip
-  reverse_proxy localhost:5150 {
+  reverse_proxy localhost:6001 {
     header_up X-Real-IP {http.request.remote.host}
     header_up X-Forwarded-For {http.request.remote.host}
     header_up X-Forwarded-Proto https

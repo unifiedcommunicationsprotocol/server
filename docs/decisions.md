@@ -84,10 +84,11 @@ Postgres 18+ (self-hosted via Hetzner VPS). Row-level constraints provide data i
 
 ---
 
-## ADR-004: SQL Access Pattern — Code Generation (sqlc) or Driver (pgx)
+## ADR-004: SQL Access Pattern — stdlib database/sql + Manual Queries
 
 **Date:** 2026-06-26
-**Status:** Pending
+**Status:** Accepted
+**Updated:** 2026-06-29
 
 **Context:**
 Go's `database/sql` stdlib is flexible but verbose. Two common patterns exist: (1) sqlc, which code-generates type-safe queries from SQL; (2) pgx driver, which provides better error handling and prepared statement caching. Both avoid the implicit complexity of ORMs.
@@ -95,14 +96,24 @@ Go's `database/sql` stdlib is flexible but verbose. Two common patterns exist: (
 **Options Considered:**
 - **sqlc** — SQL-first, generated Go code, type-safe, zero runtime deps beyond Postgres driver
 - **pgx** — richer driver API, better perf, still requires manual SQL or query builders
+- **Raw database/sql + lib/pq** — stdlib SQL with pq driver; verbose but explicit, auditable, minimal deps
 - **gorm, ent, sqlc** — full ORM; violates "no hidden magic" principle
-- **Raw database/sql** — verbose; acceptable for critical security code but tedious at scale
 
 **Decision:**
-TBD. Recommend starting with `sqlc` (pure code generation, no runtime wrapper) and evaluating `pgx` if query complexity grows beyond sqlc's scope. Decision deferred until schema stabilizes.
+Stdlib `database/sql` with `lib/pq` driver and manual SQL queries. This choice prioritizes:
+1. **Auditability** — all SQL is visible and reviewable (critical for security-sensitive code)
+2. **Minimal dependencies** — only `lib/pq` driver beyond stdlib (lean binary)
+3. **Explicit control** — no hidden query generation or N+1 surprises
+4. **Production readiness** — battle-tested, used in production at scale
+
+The verbosity cost (vs sqlc) is acceptable given the security-critical nature of message storage and identity management.
 
 **Consequences:**
-- (Deferred)
+- ✅ All SQL visible and auditable
+- ✅ Zero code generation complexity
+- ✅ Standard library only (minimal deps)
+- ⚠️ Manual query building is repetitive (mitigated by well-structured helper functions)
+- ⚠️ Runtime errors for SQL syntax (mitigated by comprehensive test coverage)
 
 ---
 
@@ -182,27 +193,36 @@ Load all configuration from environment variables at server startup. Populate a 
 
 ---
 
-## ADR-008: Deployment — Single Binary + Postgres Only
+## ADR-008: Deployment — Single Binary + Postgres Only (with Embedded Dashboard)
 
 **Date:** 2026-06-26
 **Status:** Accepted
+**Updated:** 2026-06-29
 
 **Context:**
-"Self-hostable" means operators can run UCP Server on a modest Hetzner VPS without Docker, Kubernetes, load balancers, or managed services. The server is stateless (federation state is ephemeral); persistence needs only one database.
+"Self-hostable" means operators can run UCP Server on a modest Hetzner VPS without Docker, Kubernetes, load balancers, or managed services. The server is stateless (federation state is ephemeral); persistence needs only one database. Operators also need a web UI to monitor and manage the server.
 
 **Options Considered:**
-- **Single binary + Postgres** (chosen) — operator runs `./ucp-server` and `systemctl start postgres`; minimal infra
+- **Single binary + Postgres + embedded React UI** (chosen) — operator runs `./ucp-server`; dashboard included
 - **Docker + Docker Compose** — easier for some operators; masks underlying complexity, adds Docker management burden
+- **Separate dashboard service** — added operational burden, separate deployment, failure modes
 - **Kubernetes** — overkill for single-server deployment; appropriate only after multi-server federation is operational
 - **Managed database + Lambda** — vendor lock-in contradicts "self-hostable" principle
 
 **Decision:**
-Release ucp-server as a single statically-linked binary compiled via `go build ./cmd/ucp-server`. Operators install Postgres 18+ via distro package manager (apt, dnf, etc.). Systemd units for ucp-server and postgres management included in docs. No Docker, no Kubernetes, no managed services required.
+Release ucp-server as a single statically-linked binary compiled via `go build ./cmd/ucp-server`. The binary:
+1. Serves API endpoints on `:6001` (configurable via API_PORT env var)
+2. Embeds and serves React admin dashboard UI on same port via `//go:embed`
+3. Performs SPA routing (index.html fallback) for client-side navigation
+
+Operators install Postgres 18+ via distro package manager (apt, dnf, etc.). Systemd units for ucp-server and postgres management included in docs. No Docker, no Kubernetes, no managed services required.
 
 **Consequences:**
 - ✅ Minimal operational footprint; runs on $5/month Hetzner VPS
 - ✅ Operators control data residency (no cloud vendor)
 - ✅ Binary deployment is fast and reproducible
+- ✅ Dashboard included in binary (no separate web UI deployment)
+- ✅ Single port (`:6001`) for both API and UI; simpler firewall/network rules
 - ⚠️ Operators must manage Postgres updates and backups (documented; not a limitation)
 - ⚠️ Multi-server HA is deferred (addressed later via federation and async replication)
 
@@ -238,3 +258,44 @@ Build pure-Go RFC 9420 implementation directly in the server (`internal/crypto/m
 - ✅ UCP owns a production-grade pure-Go MLS lib (community asset later)
 - ⚠️ Significant implementation effort upfront (~3-6 months for production-ready)
 - ⚠️ Until complete, mock placeholder in use (known limitation on go-live)
+
+---
+
+## ADR-010: Admin Dashboard Frontend — React 19 + TypeScript
+
+**Date:** 2026-06-28
+**Status:** Accepted
+
+**Context:**
+UCP Server operators need a web UI to monitor server health, manage identities, view federation status, and inspect message flow. The dashboard must be:
+1. Deployable as a single binary (no separate web server)
+2. Responsive and interactive (requires client-side interactivity)
+3. Real-time capable (future: WebSocket for live metrics)
+
+**Options Considered:**
+- **React 19 + TypeScript** (chosen) — mature SPA framework, rich interactivity, easily embeddable
+- **Vue or Svelte** — lighter weight; smaller ecosystem; would require equivalent build tooling
+- **Server-rendered HTML (Templ)** — simpler build; less interactive; harder to make responsive
+- **Separate dashboard service** — operational burden; separate deployment; not "single binary"
+
+**Decision:**
+Build admin dashboard as React 19 SPA with TypeScript. Compile to static assets (`dist/` folder), embed in Go binary via `//go:embed`, and serve from the main `ucp-server` binary on the same port (`:6001`, configurable). Use SPA routing (index.html fallback) to handle client-side navigation.
+
+**Architecture:**
+```
+www/ (Node.js/Bun build toolchain)
+  ├─ src/components/  — React tabs (6 screens)
+  ├─ src/api/        — TypeScript API client
+  └─ dist/           — Compiled assets (210 KB gzipped)
+      │
+      └─→ cmd/ucp-server/public/  (embedded in Go binary)
+          └─ Served by serveIndexFallback() handler
+```
+
+**Consequences:**
+- ✅ Single binary includes UI (no separate deployment)
+- ✅ Full interactivity and real-time capability via WebSocket (future)
+- ✅ Type-safe API calls (TypeScript ↔ Go with matching JSON schemas)
+- ✅ Modern tooling (React ecosystem is mature and well-tested)
+- ⚠️ Build dependency: Bun must be installed to rebuild dashboard
+- ⚠️ Larger binary (but still reasonable: ~50 MB uncompressed, builds in seconds)
