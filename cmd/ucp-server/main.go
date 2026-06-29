@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"embed"
 	"fmt"
+	"io/fs"
 	"net/http"
 	"os"
 	"os/signal"
@@ -18,6 +20,9 @@ import (
 	"github.com/unifiedcommunicationsprotocol/server/internal/store"
 	"github.com/unifiedcommunicationsprotocol/server/internal/transport"
 )
+
+//go:embed public/*
+var publicFS embed.FS
 
 func main() {
 	if err := run(); err != nil {
@@ -77,6 +82,13 @@ func run() error {
 
 	// Register metrics endpoint
 	mux.HandleFunc("GET /metrics", handleMetrics(metrics))
+
+	// Serve React dashboard (SPA)
+	publicFiles, err := fs.Sub(publicFS, "public")
+	if err == nil {
+		// Serve static files with fallback to index.html for SPA routing
+		mux.Handle("/", serveIndexFallback(publicFiles))
+	}
 
 	// Create HTTP server
 	server := &http.Server{
@@ -202,4 +214,34 @@ func getEnv(key, defaultVal string) string {
 		return val
 	}
 	return defaultVal
+}
+
+// serveIndexFallback serves files from publicFS with fallback to index.html for SPA routing
+func serveIndexFallback(publicFiles fs.FS) http.Handler {
+	fileServer := http.FileServer(http.FS(publicFiles))
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		path := strings.TrimPrefix(r.URL.Path, "/")
+		if path == "" {
+			path = "index.html"
+		}
+
+		// Check if file exists
+		_, err := fs.Stat(publicFiles, path)
+		if err == nil {
+			// File exists, serve it normally
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// File not found, check if it looks like an API route or asset
+		// If it's not an asset extension and not a known API path, serve index.html for SPA
+		if !strings.Contains(path, ".") || strings.HasSuffix(path, ".html") {
+			r.URL.Path = "/"
+			fileServer.ServeHTTP(w, r)
+			return
+		}
+
+		// Asset not found (e.g., missing .js, .css)
+		http.Error(w, "Not Found", http.StatusNotFound)
+	})
 }

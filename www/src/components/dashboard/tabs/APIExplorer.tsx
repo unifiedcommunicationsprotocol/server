@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { MethodBadge } from '../primitives/MethodBadge';
-import { apiCall } from '../../api/handlers';
+import { apiCall } from '../../../api/handlers';
 
 interface Endpoint {
   id: string;

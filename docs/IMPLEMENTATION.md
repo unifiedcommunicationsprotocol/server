@@ -8,7 +8,8 @@
 - ✅ All 11 core packages implemented
 - ✅ **233 comprehensive tests** (Phase 1-3 complete: API, WebSocket, Federation)
 - ✅ **MLS (RFC 9420) fully integrated** and production-ready
-- ✅ Single-binary deployment (no external runtime dependencies)
+- ✅ **Admin dashboard embedded in Go binary** (React 19 + Tailwind, 6 tabs, full API integration)
+- ✅ Single-binary deployment (API + UI, no external runtime dependencies)
 - ✅ Federation framework operational (multi-domain routing, exponential backoff, connection pooling)
 - ✅ Postgres store fully tested (array handling, message idempotency)
 - ✅ WebSocket real-time push verified (subscriptions, broadcasts, keepalive)

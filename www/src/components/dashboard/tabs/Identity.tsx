@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { SectionCard } from '../primitives/SectionCard';
 import { DataBlock } from '../primitives/DataBlock';
-import { getServerKey, getIdentity } from '../../api/handlers';
+import { getServerKey, getIdentity } from '../../../api/handlers';
 
 export const Identity = () => {
   const [lookupAddr, setLookupAddr] = useState('');

@@ -7,7 +7,7 @@ import { Identity } from './tabs/Identity';
 import { Sessions } from './tabs/Sessions';
 import { Federation } from './tabs/Federation';
 import { Bridge } from './tabs/Bridge';
-import { getServerKey } from '../api/handlers';
+import { getServerKey } from '../../api/handlers';
 
 export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
