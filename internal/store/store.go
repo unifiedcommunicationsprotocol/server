@@ -510,3 +510,116 @@ func (s *Store) GetEncryptedCredential(ctx context.Context, accountID string) (a
 
 	return address, imapHost, imapPort, imapUsername, encryptedToken, nil
 }
+
+// StoreKeyShare stores an opt-in server processing key share for a group.
+// Key material is encrypted at application layer before storage.
+func (s *Store) StoreKeyShare(ctx context.Context, address string, groupID string, epoch int64, encryptedKeyMaterial string) error {
+	// Set up RLS context
+	if err := s.setRLSUserContext(ctx); err != nil {
+		// Non-fatal
+	}
+
+	const query = `
+	INSERT INTO key_shares (address, group_id, epoch, key_material)
+	VALUES ($1, $2, $3, $4)
+	ON CONFLICT (address, group_id) DO UPDATE SET
+		epoch = $3,
+		key_material = $4,
+		updated_at = NOW()
+	`
+
+	_, err := s.db.ExecContext(ctx, query, address, groupID, epoch, encryptedKeyMaterial)
+	if err != nil {
+		return fmt.Errorf("store key share: %w", err)
+	}
+
+	return nil
+}
+
+// GetKeyShare retrieves opt-in server processing key for a group.
+func (s *Store) GetKeyShare(ctx context.Context, address string, groupID string) (epoch int64, encryptedKeyMaterial string, err error) {
+	// Set up RLS context
+	if err := s.setRLSUserContext(ctx); err != nil {
+		// Non-fatal
+	}
+
+	const query = `
+	SELECT epoch, key_material
+	FROM key_shares
+	WHERE address = $1 AND group_id = $2
+	`
+
+	err = s.db.QueryRowContext(ctx, query, address, groupID).Scan(&epoch, &encryptedKeyMaterial)
+	if err != nil {
+		if err == sql.ErrNoRows {
+			return 0, "", fmt.Errorf("key share not found")
+		}
+		return 0, "", fmt.Errorf("query key share: %w", err)
+	}
+
+	return epoch, encryptedKeyMaterial, nil
+}
+
+// DeleteKeyShare removes a key share (user revoked server processing).
+func (s *Store) DeleteKeyShare(ctx context.Context, address string, groupID string) error {
+	// Set up RLS context
+	if err := s.setRLSUserContext(ctx); err != nil {
+		// Non-fatal
+	}
+
+	const query = `
+	DELETE FROM key_shares
+	WHERE address = $1 AND group_id = $2
+	`
+
+	_, err := s.db.ExecContext(ctx, query, address, groupID)
+	if err != nil {
+		return fmt.Errorf("delete key share: %w", err)
+	}
+
+	return nil
+}
+
+// ListKeyShares lists all key shares for a user.
+func (s *Store) ListKeyShares(ctx context.Context, address string) ([]map[string]interface{}, error) {
+	// Set up RLS context
+	if err := s.setRLSUserContext(ctx); err != nil {
+		// Non-fatal
+	}
+
+	const query = `
+	SELECT group_id, epoch, updated_at
+	FROM key_shares
+	WHERE address = $1
+	ORDER BY updated_at DESC
+	`
+
+	rows, err := s.db.QueryContext(ctx, query, address)
+	if err != nil {
+		return nil, fmt.Errorf("query key shares: %w", err)
+	}
+	defer rows.Close()
+
+	var shares []map[string]interface{}
+	for rows.Next() {
+		var groupID string
+		var epoch int64
+		var updatedAt string
+
+		if err := rows.Scan(&groupID, &epoch, &updatedAt); err != nil {
+			return nil, fmt.Errorf("scan key share: %w", err)
+		}
+
+		shares = append(shares, map[string]interface{}{
+			"group_id":   groupID,
+			"epoch":      epoch,
+			"updated_at": updatedAt,
+		})
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate key shares: %w", err)
+	}
+
+	return shares, nil
+}

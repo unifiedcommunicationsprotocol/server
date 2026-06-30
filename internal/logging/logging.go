@@ -6,6 +6,7 @@ import (
 	"log"
 	"os"
 	"sync"
+	"sync/atomic"
 	"time"
 )
 
@@ -99,67 +100,140 @@ func formatKV(kv ...interface{}) string {
 	return result
 }
 
-// Metrics tracks server statistics.
+// Metrics tracks server statistics (Prometheus-compatible).
 type Metrics struct {
-	mu                  sync.RWMutex
-	MessagesReceived    int64
-	MessagesSent        int64
-	AuthChallenges      int64
-	AuthSessions        int64
-	AttachmentsUploaded int64
-	Errors              int64
-	LastError           string
+	// Counters (monotonic)
+	HTTPRequestsTotal       int64 // All HTTP requests
+	HTTPErrorsTotal         int64 // HTTP errors (4xx, 5xx)
+	AuthChallengesTotal     int64 // Challenge requests
+	AuthSessionsTotal       int64 // Successful sessions
+	AuthFailuresTotal       int64 // Failed auth attempts
+	MessagesReceivedTotal   int64 // Inbound messages
+	MessagesSentTotal       int64 // Outbound messages
+	AttachmentsUploadedTotal int64 // File uploads
+	FederationDeliveriesTotal int64 // Federation attempts
+	FederationFailuresTotal int64 // Federation failures
+	SearchQueriesTotal      int64 // Full-text searches
+
+	// State metrics
+	ActiveConnections       int64 // Current WebSocket connections
+	PendingRetries          int64 // Messages in retry queue
+
+	// Error tracking
+	LastErrorTime           time.Time
+	LastErrorMsg            string
+
+	mu sync.RWMutex
 }
 
-// RecordMessage records a message.
+// RecordHTTPRequest increments HTTP request counter.
+func (m *Metrics) RecordHTTPRequest() {
+	atomic.AddInt64(&m.HTTPRequestsTotal, 1)
+}
+
+// RecordHTTPError increments HTTP error counter.
+func (m *Metrics) RecordHTTPError() {
+	atomic.AddInt64(&m.HTTPErrorsTotal, 1)
+}
+
+// RecordAuthChallenge increments auth challenge counter.
+func (m *Metrics) RecordAuthChallenge() {
+	atomic.AddInt64(&m.AuthChallengesTotal, 1)
+}
+
+// RecordAuthSession increments successful session counter.
+func (m *Metrics) RecordAuthSession() {
+	atomic.AddInt64(&m.AuthSessionsTotal, 1)
+}
+
+// RecordAuthFailure increments failed auth counter.
+func (m *Metrics) RecordAuthFailure() {
+	atomic.AddInt64(&m.AuthFailuresTotal, 1)
+}
+
+// RecordMessage increments message counters.
 func (m *Metrics) RecordMessage(sent bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
 	if sent {
-		m.MessagesSent++
+		atomic.AddInt64(&m.MessagesSentTotal, 1)
 	} else {
-		m.MessagesReceived++
+		atomic.AddInt64(&m.MessagesReceivedTotal, 1)
 	}
 }
 
-// RecordAuth records auth event.
-func (m *Metrics) RecordAuth(isSession bool) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if isSession {
-		m.AuthSessions++
+// RecordAttachmentUpload increments attachment counter.
+func (m *Metrics) RecordAttachmentUpload() {
+	atomic.AddInt64(&m.AttachmentsUploadedTotal, 1)
+}
+
+// RecordFederationAttempt increments federation counter.
+func (m *Metrics) RecordFederationAttempt(success bool) {
+	if success {
+		atomic.AddInt64(&m.FederationDeliveriesTotal, 1)
 	} else {
-		m.AuthChallenges++
+		atomic.AddInt64(&m.FederationFailuresTotal, 1)
 	}
 }
 
-// RecordAttachment records attachment upload.
-func (m *Metrics) RecordAttachment() {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.AttachmentsUploaded++
+// RecordSearchQuery increments search query counter.
+func (m *Metrics) RecordSearchQuery() {
+	atomic.AddInt64(&m.SearchQueriesTotal, 1)
 }
 
-// RecordError records an error.
-func (m *Metrics) RecordError(err string) {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	m.Errors++
-	m.LastError = err
+// UpdateActiveConnections sets current connection count.
+func (m *Metrics) UpdateActiveConnections(count int64) {
+	atomic.StoreInt64(&m.ActiveConnections, count)
 }
 
-// Snapshot returns current metrics.
+// UpdatePendingRetries sets current retry queue size.
+func (m *Metrics) UpdatePendingRetries(count int64) {
+	atomic.StoreInt64(&m.PendingRetries, count)
+}
+
+// RecordError records an error event with timestamp.
+func (m *Metrics) RecordError(msg string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	m.LastErrorTime = time.Now()
+	m.LastErrorMsg = msg
+	atomic.AddInt64(&m.HTTPErrorsTotal, 1)
+}
+
+
+// Snapshot returns current metrics (Prometheus-compatible).
 func (m *Metrics) Snapshot() map[string]interface{} {
 	m.mu.RLock()
 	defer m.mu.RUnlock()
 
 	return map[string]interface{}{
-		"messages_received":    m.MessagesReceived,
-		"messages_sent":        m.MessagesSent,
-		"auth_challenges":      m.AuthChallenges,
-		"auth_sessions":        m.AuthSessions,
-		"attachments_uploaded": m.AttachmentsUploaded,
-		"errors":               m.Errors,
-		"last_error":           m.LastError,
+		// HTTP counters
+		"http_requests_total":           atomic.LoadInt64(&m.HTTPRequestsTotal),
+		"http_errors_total":             atomic.LoadInt64(&m.HTTPErrorsTotal),
+
+		// Auth counters
+		"auth_challenges_total":         atomic.LoadInt64(&m.AuthChallengesTotal),
+		"auth_sessions_total":           atomic.LoadInt64(&m.AuthSessionsTotal),
+		"auth_failures_total":           atomic.LoadInt64(&m.AuthFailuresTotal),
+
+		// Message counters
+		"messages_received_total":       atomic.LoadInt64(&m.MessagesReceivedTotal),
+		"messages_sent_total":           atomic.LoadInt64(&m.MessagesSentTotal),
+
+		// Attachment counters
+		"attachments_uploaded_total":    atomic.LoadInt64(&m.AttachmentsUploadedTotal),
+
+		// Federation counters
+		"federation_deliveries_total":   atomic.LoadInt64(&m.FederationDeliveriesTotal),
+		"federation_failures_total":     atomic.LoadInt64(&m.FederationFailuresTotal),
+
+		// Search counters
+		"search_queries_total":          atomic.LoadInt64(&m.SearchQueriesTotal),
+
+		// State metrics
+		"active_connections":            atomic.LoadInt64(&m.ActiveConnections),
+		"pending_retries":               atomic.LoadInt64(&m.PendingRetries),
+
+		// Error tracking
+		"last_error_time":               m.LastErrorTime.Unix(),
+		"last_error_msg":                m.LastErrorMsg,
 	}
 }

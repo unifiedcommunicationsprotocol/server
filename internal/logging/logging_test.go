@@ -19,34 +19,34 @@ func TestMetrics(t *testing.T) {
 
 	m.RecordMessage(false)
 	m.RecordMessage(true)
-	m.RecordAuth(false)
-	m.RecordAuth(true)
-	m.RecordAttachment()
+	m.RecordAuthChallenge()
+	m.RecordAuthSession()
+	m.RecordAttachmentUpload()
 	m.RecordError("test error")
 
 	snapshot := m.Snapshot()
 
-	if snapshot["messages_received"] != int64(1) {
-		t.Errorf("messages_received: got %v, want 1", snapshot["messages_received"])
+	if snapshot["messages_received_total"] != int64(1) {
+		t.Errorf("messages_received_total: got %v, want 1", snapshot["messages_received_total"])
 	}
 
-	if snapshot["messages_sent"] != int64(1) {
-		t.Errorf("messages_sent: got %v, want 1", snapshot["messages_sent"])
+	if snapshot["messages_sent_total"] != int64(1) {
+		t.Errorf("messages_sent_total: got %v, want 1", snapshot["messages_sent_total"])
 	}
 
-	if snapshot["auth_challenges"] != int64(1) {
-		t.Errorf("auth_challenges: got %v, want 1", snapshot["auth_challenges"])
+	if snapshot["auth_challenges_total"] != int64(1) {
+		t.Errorf("auth_challenges_total: got %v, want 1", snapshot["auth_challenges_total"])
 	}
 
-	if snapshot["auth_sessions"] != int64(1) {
-		t.Errorf("auth_sessions: got %v, want 1", snapshot["auth_sessions"])
+	if snapshot["auth_sessions_total"] != int64(1) {
+		t.Errorf("auth_sessions_total: got %v, want 1", snapshot["auth_sessions_total"])
 	}
 
-	if snapshot["attachments_uploaded"] != int64(1) {
-		t.Errorf("attachments_uploaded: got %v, want 1", snapshot["attachments_uploaded"])
+	if snapshot["attachments_uploaded_total"] != int64(1) {
+		t.Errorf("attachments_uploaded_total: got %v, want 1", snapshot["attachments_uploaded_total"])
 	}
 
-	if snapshot["errors"] != int64(1) {
-		t.Errorf("errors: got %v, want 1", snapshot["errors"])
+	if snapshot["http_errors_total"] != int64(1) {
+		t.Errorf("http_errors_total: got %v, want 1", snapshot["http_errors_total"])
 	}
 }

@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"sync"
 	"time"
+
+	"github.com/unifiedcommunicationsprotocol/server/internal/models"
 )
 
 // SessionStore defines the interface for session persistence.
@@ -173,6 +175,124 @@ func (m *Manager) RefreshSession(ctx context.Context, oldToken string, maxLifeti
 	_ = m.RevokeSession(ctx, oldToken)
 
 	return newSession, nil
+}
+
+// KeyRotationManager handles signing key lifecycle: generation, rotation, grace period, expiry.
+type KeyRotationManager struct {
+	store SessionStore // For updating identities with new keys
+	mu    sync.RWMutex
+}
+
+// KeyRotationConfig defines key rotation parameters.
+type KeyRotationConfig struct {
+	Lifetime        time.Duration // Default: 60 days
+	RotationWindow  time.Duration // Begin rotation 7 days before expiry
+	GracePeriod     time.Duration // Old key valid for verification 48 hours after rotation
+	CleanupWindow   time.Duration // Remove expired key 7 days after expiry
+	ProcessInterval time.Duration // Check for rotations every 1 hour
+}
+
+// DefaultKeyRotationConfig returns the spec-compliant rotation schedule.
+func DefaultKeyRotationConfig() KeyRotationConfig {
+	return KeyRotationConfig{
+		Lifetime:        60 * 24 * time.Hour,  // 60 days
+		RotationWindow:  7 * 24 * time.Hour,   // Begin 7 days before expiry
+		GracePeriod:     48 * time.Hour,       // 48-hour grace for verification
+		CleanupWindow:   7 * 24 * time.Hour,   // Remove after 7 more days
+		ProcessInterval: 1 * time.Hour,        // Check hourly
+	}
+}
+
+// NewKeyRotationManager creates a new key rotation manager.
+func NewKeyRotationManager(store SessionStore) *KeyRotationManager {
+	return &KeyRotationManager{
+		store: store,
+	}
+}
+
+// GenerateSigningKeyPair generates a new Ed25519 signing key pair.
+func (krm *KeyRotationManager) GenerateSigningKeyPair() (pub string, priv ed25519.PrivateKey, err error) {
+	pubKey, privKey, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return "", nil, fmt.Errorf("generate key pair: %w", err)
+	}
+
+	pubB64 := base64.StdEncoding.EncodeToString(pubKey)
+	return pubB64, privKey, nil
+}
+
+// CreateSigningKey creates a new signing key record with identity signature.
+func (krm *KeyRotationManager) CreateSigningKey(ctx context.Context, cfg KeyRotationConfig, pubKeyB64 string, identityPrivKey ed25519.PrivateKey) (*models.SigningKey, error) {
+	now := time.Now()
+	expiresAt := now.Add(cfg.Lifetime)
+
+	// Sign the key binding string: "signing_key:${pubkey}:${expires}"
+	bindingStr := fmt.Sprintf("signing_key:%s:%d", pubKeyB64, expiresAt.Unix())
+	sig := ed25519.Sign(identityPrivKey, []byte(bindingStr))
+	sigB64 := base64.StdEncoding.EncodeToString(sig)
+
+	return &models.SigningKey{
+		Key:     pubKeyB64,
+		Expires: expiresAt.Unix(),
+		Issued:  now.Unix(),
+		Sig:     sigB64,
+		Status:  "active",
+	}, nil
+}
+
+// ShouldRotateKey checks if a key should begin rotation (7 days before expiry).
+func (krm *KeyRotationManager) ShouldRotateKey(cfg KeyRotationConfig, signingKey *models.SigningKey) bool {
+	if signingKey.Status == "active" {
+		expiresAt := time.Unix(signingKey.Expires, 0)
+		rotationTime := expiresAt.Add(-cfg.RotationWindow)
+		return time.Now().After(rotationTime)
+	}
+	return false
+}
+
+// RotateKey marks an old key as "grace" and prepares for new key activation.
+func (krm *KeyRotationManager) RotateKey(cfg KeyRotationConfig, oldKey *models.SigningKey) *models.SigningKey {
+	// Transition old key to grace period
+	oldKey.Status = "grace"
+
+	// Grace period ends 48 hours from now
+	oldKey.Expires = time.Now().Add(cfg.GracePeriod).Unix()
+
+	return oldKey
+}
+
+// ExpireKey marks a key as expired (after grace period).
+func (krm *KeyRotationManager) ExpireKey(oldKey *models.SigningKey) *models.SigningKey {
+	oldKey.Status = "expired"
+	return oldKey
+}
+
+// ProcessKeyRotations runs periodic key rotation checks for all identities.
+// In production, this should be called as a background job.
+func (krm *KeyRotationManager) ProcessKeyRotations(ctx context.Context, cfg KeyRotationConfig) {
+	ticker := time.NewTicker(cfg.ProcessInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			// In production: query all identities and check for rotation need
+			// This is a placeholder for the background rotation job
+			// Actual implementation would:
+			// 1. Query all identities from store
+			// 2. For each identity, check signing keys
+			// 3. If ShouldRotateKey(), emit rotation event
+			// 4. Update identity in store
+
+		case <-ctx.Done():
+			return
+		}
+	}
+}
+
+// StartKeyRotationWorker starts the background key rotation process.
+func StartKeyRotationWorker(ctx context.Context, krm *KeyRotationManager, cfg KeyRotationConfig) {
+	go krm.ProcessKeyRotations(ctx, cfg)
 }
 
 // RevokeSession revokes a session token immediately.
