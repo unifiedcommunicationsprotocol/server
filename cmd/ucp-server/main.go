@@ -14,6 +14,7 @@ import (
 
 	_ "github.com/lib/pq"
 
+	"github.com/unifiedcommunicationsprotocol/server/internal/admin"
 	"github.com/unifiedcommunicationsprotocol/server/internal/auth"
 	"github.com/unifiedcommunicationsprotocol/server/internal/logging"
 	"github.com/unifiedcommunicationsprotocol/server/internal/ratelimit"
@@ -65,6 +66,9 @@ func run() error {
 	fedRouter := router.New()
 	retryQueue := router.NewRetryQueue()
 
+	// Initialize admin event hub
+	adminHub := admin.New()
+
 	// Create HTTP router
 	mux := http.NewServeMux()
 
@@ -76,7 +80,7 @@ func run() error {
 
 	// Register auth endpoints (with rate limiting)
 	mux.HandleFunc("POST /auth/challenge", withRateLimit(authLimiter, handleChallenge(challengeStore)))
-	mux.HandleFunc("POST /auth/session", withRateLimit(authLimiter, handleSession(authMgr, challengeStore, s)))
+	mux.HandleFunc("POST /auth/session", withRateLimit(authLimiter, handleSession(authMgr, challengeStore, s, adminHub)))
 	mux.HandleFunc("POST /auth/session/refresh", withRateLimit(authLimiter, handleRefresh(authMgr)))
 
 	// Register API endpoints (with rate limiting)
@@ -92,6 +96,7 @@ func run() error {
 	mux.HandleFunc("GET /api/admin/sessions", handleAdminSessions(s))
 	mux.HandleFunc("GET /api/admin/federation/connections", handleAdminFederationConnections(fedRouter))
 	mux.HandleFunc("GET /api/admin/federation/queue", handleAdminFederationQueue(retryQueue))
+	mux.HandleFunc("GET /api/admin/subscribe", handleAdminSubscribe(adminHub))
 
 	// Serve React dashboard (SPA)
 	publicFiles, err := fs.Sub(publicFS, "public")

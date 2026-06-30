@@ -13,11 +13,22 @@ interface SessionData {
   status: string;
 }
 
+interface AdminEvent {
+  type: string;
+  timestamp: number;
+  data: {
+    token?: string;
+    identity?: string;
+    expires_at?: number;
+  };
+}
+
 export const Sessions = () => {
   const [sessions, setSessions] = useState<SessionData[]>([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Load initial sessions
     const fetchSessions = async () => {
       setIsLoading(true);
       const data = await getAdminSessions();
@@ -26,9 +37,45 @@ export const Sessions = () => {
     };
 
     fetchSessions();
-    // Refresh every 10 seconds
-    const interval = setInterval(fetchSessions, 10000);
-    return () => clearInterval(interval);
+
+    // Connect to SSE stream for real-time updates
+    const eventSource = new EventSource('http://localhost:6001/api/admin/subscribe');
+
+    eventSource.onmessage = (event) => {
+      try {
+        const adminEvent = JSON.parse(event.data) as AdminEvent;
+
+        if (adminEvent.type === 'session.created') {
+          setSessions((prev) => {
+            const exists = prev.find((s) => s.token === adminEvent.data.token);
+            if (exists) return prev;
+
+            return [
+              {
+                token: adminEvent.data.token || '',
+                identity: adminEvent.data.identity || '',
+                issued_at: Math.floor(adminEvent.timestamp),
+                expires_at: adminEvent.data.expires_at || 0,
+                status: 'active',
+              },
+              ...prev,
+            ];
+          });
+        } else if (adminEvent.type === 'session.revoked') {
+          setSessions((prev) =>
+            prev.filter((s) => s.token !== adminEvent.data.token)
+          );
+        }
+      } catch (err) {
+        // Ignore parse errors
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
   }, []);
   return (
     <div className="fade-in space-y-3.5">

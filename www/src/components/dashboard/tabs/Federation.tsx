@@ -26,6 +26,16 @@ interface QueueData {
   items: QueueItem[];
 }
 
+interface AdminEvent {
+  type: string;
+  timestamp: number;
+  data: {
+    remote_domain?: string;
+    queue_depth?: number;
+    failed_count?: number;
+  };
+}
+
 export const Federation = () => {
   const [connections, setConnections] = useState<FederationConnection[]>([]);
   const [queueData, setQueueData] = useState<QueueData>({
@@ -36,6 +46,7 @@ export const Federation = () => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
+    // Load initial data
     const fetchData = async () => {
       setIsLoading(true);
       const [connsData, queueResult] = await Promise.all([
@@ -48,9 +59,48 @@ export const Federation = () => {
     };
 
     fetchData();
-    // Refresh every 10 seconds
-    const interval = setInterval(fetchData, 10000);
-    return () => clearInterval(interval);
+
+    // Connect to SSE stream for real-time updates
+    const eventSource = new EventSource('http://localhost:6001/api/admin/subscribe');
+
+    eventSource.onmessage = (event) => {
+      try {
+        const adminEvent = JSON.parse(event.data) as AdminEvent;
+
+        if (adminEvent.type === 'federation.connected') {
+          setConnections((prev) => {
+            const exists = prev.find(
+              (c) => c.remote_domain === adminEvent.data.remote_domain
+            );
+            if (exists) return prev;
+
+            return [
+              ...prev,
+              {
+                remote_domain: adminEvent.data.remote_domain || '',
+                established_at: Math.floor(adminEvent.timestamp),
+                last_activity: Math.floor(adminEvent.timestamp),
+                retries: 0,
+              },
+            ];
+          });
+        } else if (adminEvent.type === 'queue.updated') {
+          setQueueData({
+            queue_depth: adminEvent.data.queue_depth || 0,
+            failed_count: adminEvent.data.failed_count || 0,
+            items: queueData.items, // Items fetched separately
+          });
+        }
+      } catch (err) {
+        // Ignore parse errors
+      }
+    };
+
+    eventSource.onerror = () => {
+      eventSource.close();
+    };
+
+    return () => eventSource.close();
   }, []);
   const statCards = [
     { label: 'Connections', value: connections.length.toString() },

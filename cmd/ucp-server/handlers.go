@@ -11,6 +11,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/unifiedcommunicationsprotocol/server/internal/admin"
 	"github.com/unifiedcommunicationsprotocol/server/internal/auth"
 	"github.com/unifiedcommunicationsprotocol/server/internal/logging"
 	"github.com/unifiedcommunicationsprotocol/server/internal/models"
@@ -175,7 +176,7 @@ type SessionResponse struct {
 	ExpiresAt    int64  `json:"expires_at"`
 }
 
-func handleSession(am *auth.Manager, cs *auth.ChallengeStore, s *store.Store) http.HandlerFunc {
+func handleSession(am *auth.Manager, cs *auth.ChallengeStore, s *store.Store, adminHub *admin.AdminHub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		var req SessionRequest
 		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
@@ -222,6 +223,9 @@ func handleSession(am *auth.Manager, cs *auth.ChallengeStore, s *store.Store) ht
 			http.Error(w, fmt.Sprintf("create session: %v", err), http.StatusInternalServerError)
 			return
 		}
+
+		// Broadcast session created event to admin subscribers
+		adminHub.BroadcastSessionCreated(session.Token, req.Address, session.ExpiresAt)
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(SessionResponse{
