@@ -35,13 +35,47 @@ export const ComposeModal = ({
         throw new Error('Recipient required');
       }
 
+      if (!sessionToken) throw new Error('No session token');
+
+      // Upload attachments (Phase 2e)
+      const attachmentIds: { id: string; name: string; size: number; sha256: string }[] = [];
+
+      for (const file of files) {
+        try {
+          const formData = new FormData();
+          formData.append('file', file);
+
+          const response = await fetch('http://localhost:6001/api/content/upload', {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${sessionToken}`,
+            },
+            body: formData,
+          });
+
+          if (!response.ok) {
+            throw new Error(`Upload failed: ${response.status}`);
+          }
+
+          const uploadResult = await response.json() as { id: string; sha256: string };
+          attachmentIds.push({
+            id: uploadResult.id,
+            name: file.name,
+            size: file.size,
+            sha256: uploadResult.sha256,
+          });
+        } catch (err) {
+          throw new Error(`Failed to upload ${file.name}: ${err instanceof Error ? err.message : 'unknown error'}`);
+        }
+      }
+
       // Build recipients list
       const recipients = [
         ...to.split(',').map((s) => s.trim()).filter(Boolean),
         ...cc.split(',').map((s) => s.trim()).filter(Boolean),
       ];
 
-      // Build envelope (simplified for now)
+      // Build envelope with attachments
       const envelope = {
         v: 'ucp/1.0',
         from: senderAddress,
@@ -55,21 +89,23 @@ export const ComposeModal = ({
               type: 'text',
               content: body,
             },
+            ...attachmentIds.map((att) => ({
+              type: 'attachment',
+              content_id: att.id,
+              filename: att.name,
+              size: att.size,
+              sha256: att.sha256,
+            })),
           ],
         },
         metadata: {
           subject,
           timestamp: Date.now(),
+          attachments: attachmentIds.length,
         },
       };
 
-      // Encode envelope as base64
-      const envelopeStr = JSON.stringify(envelope);
-      const envelopeB64 = btoa(envelopeStr);
-
       // Send message
-      if (!sessionToken) throw new Error('No session token');
-
       const result = await sendMessage(envelope, sessionToken);
       if (result.error) {
         throw new Error(result.error);

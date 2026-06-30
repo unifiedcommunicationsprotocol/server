@@ -324,6 +324,30 @@ export async function getAdminFederationQueue(config = defaultConfig) {
   }
 }
 
+export async function search(query: string, sessionToken?: string, config = defaultConfig) {
+  try {
+    const response = await fetchWithTimeout(
+      `${config.baseUrl}/api/search`,
+      {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(sessionToken ? { 'Authorization': `Bearer ${sessionToken}` } : {}),
+        },
+        body: JSON.stringify({ query }),
+      },
+      config.timeout
+    );
+
+    if (response.ok) {
+      return await response.json();
+    }
+    return { results: [], count: 0 };
+  } catch {
+    return { results: [], count: 0 };
+  }
+}
+
 export async function apiCall(
   method: 'GET' | 'POST',
   path: string,

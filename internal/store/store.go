@@ -343,6 +343,61 @@ func (s *Store) ListActiveSessions(ctx context.Context) ([]SessionRecord, error)
 	return records, nil
 }
 
+// SearchResult represents a search result item.
+type SearchResult struct {
+	ID        int64
+	ThreadID  string
+	From      string
+	Timestamp int64
+}
+
+// Search performs full-text search on message content.
+func (s *Store) Search(ctx context.Context, query, userAddress string) ([]SearchResult, error) {
+	// Try FTS first; fall back to LIKE if index doesn't exist
+	const ftsQuery = `
+	SELECT id, thread_id, from_addr, EXTRACT(EPOCH FROM server_ts)::int8 as server_ts
+	FROM messages
+	WHERE to_tsvector('english', COALESCE(body, '')) @@ to_tsquery('english', $1)
+	AND (from_addr = $2 OR $2 = ANY(to_addrs))
+	ORDER BY ts_rank(to_tsvector('english', COALESCE(body, '')), to_tsquery('english', $1)) DESC
+	LIMIT 50
+	`
+
+	rows, err := s.db.QueryContext(ctx, ftsQuery, query, userAddress)
+	if err != nil {
+		// Fall back to LIKE if FTS isn't available
+		const likeQuery = `
+		SELECT id, thread_id, from_addr, EXTRACT(EPOCH FROM server_ts)::int8 as server_ts
+		FROM messages
+		WHERE body ILIKE '%' || $1 || '%'
+		AND (from_addr = $2 OR $2 = ANY(to_addrs))
+		ORDER BY server_ts DESC
+		LIMIT 50
+		`
+
+		rows, err = s.db.QueryContext(ctx, likeQuery, query, userAddress)
+		if err != nil {
+			return nil, fmt.Errorf("search: %w", err)
+		}
+	}
+	defer rows.Close()
+
+	var results []SearchResult
+	for rows.Next() {
+		var result SearchResult
+		if err := rows.Scan(&result.ID, &result.ThreadID, &result.From, &result.Timestamp); err != nil {
+			continue
+		}
+		results = append(results, result)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("search rows: %w", err)
+	}
+
+	return results, nil
+}
+
 // StoreAttachment stores an attachment reference.
 func (s *Store) StoreAttachment(ctx context.Context, attachment *models.Attachment) error {
 	const query = `

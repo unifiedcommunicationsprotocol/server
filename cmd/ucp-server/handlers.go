@@ -623,7 +623,7 @@ type SearchResponse struct {
 func handleSearch(am *auth.Manager, s *store.Store) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		// Extract and validate user from Authorization header
-		address, _, err := extractUserFromAuth(r.Context(), am, r)
+		address, ctx, err := extractUserFromAuth(r.Context(), am, r)
 		if err != nil {
 			http.Error(w, fmt.Sprintf("unauthorized: %v", err), http.StatusUnauthorized)
 			return
@@ -640,20 +640,32 @@ func handleSearch(am *auth.Manager, s *store.Store) http.HandlerFunc {
 			return
 		}
 
-		// TODO: Implement full-text search
-		// For now, return empty results
-		// In Phase 2f, this would:
-		// 1. Use Postgres FTS (to_tsvector, to_tsquery)
-		// 2. Search indexed message content
-		// 3. Filter by user permissions (RLS)
-		// 4. Return matched messages with relevance score
+		// Execute search using Store method (FTS with fallback to LIKE)
+		searchResults, err := s.Search(ctx, req.Query, address)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("search failed: %v", err), http.StatusInternalServerError)
+			return
+		}
 
-		_ = address // Use for RLS filtering in real implementation
+		// Convert to MessageSummary format
+		var results []MessageSummary
+		for _, sr := range searchResults {
+			results = append(results, MessageSummary{
+				MessageID: fmt.Sprintf("%d", sr.ID),
+				ThreadID:  sr.ThreadID,
+				From:      sr.From,
+				Timestamp: sr.Timestamp,
+			})
+		}
+
+		if results == nil {
+			results = []MessageSummary{}
+		}
 
 		w.Header().Set("Content-Type", "application/json")
 		json.NewEncoder(w).Encode(SearchResponse{
-			Results: []MessageSummary{},
-			Count:   0,
+			Results: results,
+			Count:   len(results),
 		})
 	}
 }

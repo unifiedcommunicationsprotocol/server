@@ -3,6 +3,14 @@
 import { useState } from 'react';
 import { SectionCard } from '../primitives/SectionCard';
 import { MethodBadge } from '../primitives/MethodBadge';
+import { search } from '../../../api/handlers';
+
+interface MessageSummary {
+  message_id: string;
+  thread_id: string;
+  from: string;
+  timestamp: number;
+}
 
 export interface OverviewProps {
   serverStatus: 'online' | 'offline' | 'checking';
@@ -11,6 +19,22 @@ export interface OverviewProps {
 export const Overview = ({ serverStatus }: OverviewProps) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [isSearching, setIsSearching] = useState(false);
+  const [searchResults, setSearchResults] = useState<MessageSummary[]>([]);
+  const [searchAttempted, setSearchAttempted] = useState(false);
+
+  const handleSearch = async () => {
+    setIsSearching(true);
+    setSearchAttempted(true);
+    try {
+      const result = await search(searchQuery);
+      setSearchResults(result.results || []);
+    } catch (err) {
+      setSearchResults([]);
+    } finally {
+      setIsSearching(false);
+    }
+  };
+
   const statusColor =
     serverStatus === 'online' ? '#22C55E' : serverStatus === 'offline' ? '#EF4444' : '#D97706';
 
@@ -64,24 +88,50 @@ export const Overview = ({ serverStatus }: OverviewProps) => {
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !isSearching && searchQuery.trim()) {
+                handleSearch();
+              }
+            }}
             placeholder="Search messages by content…"
             className="flex-1 px-3 py-2 bg-[#18181B] border border-[#1E1E22] rounded text-[12px] text-[#FAFAFA] placeholder-[#52525B] focus:outline-none focus:border-[#6366F1]"
           />
           <button
-            onClick={async () => {
-              setIsSearching(true);
-              // TODO: Call /api/search endpoint
-              setTimeout(() => setIsSearching(false), 1000);
-            }}
+            onClick={handleSearch}
             disabled={!searchQuery.trim() || isSearching}
-            className="px-4 py-2 bg-[#6366F1] text-white text-[11px] font-semibold rounded hover:bg-[#4F46E5] disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-4 py-2 bg-[#6366F1] text-white text-[11px] font-semibold rounded hover:bg-[#4F46E5] disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
           >
-            {isSearching ? '⟳' : 'Search'}
+            {isSearching && <span className="animate-spin">⟳</span>}
+            Search
           </button>
         </div>
-        <div className="mt-3 text-[11px] text-[#52525B]">
-          ○ Search endpoint not yet implemented (requires database FTS index)
-        </div>
+
+        {/* Search Results */}
+        {searchAttempted && (
+          <div className="mt-3 space-y-2">
+            {searchResults.length === 0 ? (
+              <div className="text-[11px] text-[#52525B]">○ No results found</div>
+            ) : (
+              <>
+                <div className="text-[11px] text-[#52525B]">
+                  ✓ Found {searchResults.length} message{searchResults.length === 1 ? '' : 's'}
+                </div>
+                <div className="max-h-[200px] overflow-y-auto space-y-1">
+                  {searchResults.map((result) => (
+                    <div
+                      key={result.message_id}
+                      className="text-[10px] p-2 bg-[#18181B] rounded border border-[#1E1E22] text-[#A1A1AA]"
+                    >
+                      <div className="font-mono mb-0.5">{result.message_id.substring(0, 12)}…</div>
+                      <div>From: {result.from}</div>
+                      <div className="text-[#52525B]">{new Date(result.timestamp * 1000).toLocaleString()}</div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+          </div>
+        )}
       </div>
 
       {/* Two-column grid */}
