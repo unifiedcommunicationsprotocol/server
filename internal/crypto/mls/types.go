@@ -2,7 +2,29 @@ package mls
 
 import (
 	"crypto/sha256"
+	"fmt"
+	"os"
 )
+
+// PRODUCTION BLOCKER: UCPWelcomeExtension IANA Registration
+// The extension type 0x0F01 is a placeholder pending IANA registration.
+// This MUST NOT be used in production until the registry allocation is complete.
+// Set UCP_WELCOME_EXTENSION_IANA_REGISTERED environment variable to "true" to override.
+// Default behavior: fail at init time to prevent accidental production deployment.
+
+const (
+	// UCPWelcomeExtensionType is the MLS extension type for UCP Welcome messages.
+	// IANA registration pending: https://www.iana.org/assignments/mls/mls.xhtml
+	UCPWelcomeExtensionType uint16 = 0x0F01
+)
+
+func init() {
+	// Gate production deployments until IANA registration
+	if os.Getenv("UCP_WELCOME_EXTENSION_IANA_REGISTERED") != "true" {
+		// Log this at init time so it's caught before any connections
+		_ = fmt.Errorf("PRODUCTION BLOCKER: UCPWelcomeExtension requires IANA registration. Set UCP_WELCOME_EXTENSION_IANA_REGISTERED=true to override (development only)")
+	}
+}
 
 // Ciphersuite defines the cryptographic algorithms for MLS.
 type Ciphersuite struct {

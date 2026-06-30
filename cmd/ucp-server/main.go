@@ -83,6 +83,9 @@ func run() error {
 	mux.HandleFunc("POST /auth/session", withRateLimit(authLimiter, handleSession(authMgr, challengeStore, s, adminHub)))
 	mux.HandleFunc("POST /auth/session/refresh", withRateLimit(authLimiter, handleRefresh(authMgr)))
 
+	// Register WebSocket connection endpoint (for persistent push delivery)
+	mux.HandleFunc("GET /v1/connect", handleWebSocketConnect(hub, authMgr, cfg))
+
 	// Register API endpoints (with rate limiting)
 	mux.HandleFunc("POST /api/message/send", withRateLimit(messageLimiter, handleSendMessage(authMgr, s, hub)))
 	mux.HandleFunc("GET /api/inbox", handleInbox(authMgr, s))

@@ -19,6 +19,7 @@ import (
 	"github.com/unifiedcommunicationsprotocol/server/internal/router"
 	"github.com/unifiedcommunicationsprotocol/server/internal/store"
 	"github.com/unifiedcommunicationsprotocol/server/internal/transport"
+	"golang.org/x/net/websocket"
 )
 
 // extractUserFromAuth validates the Authorization header and returns the authenticated user address.
@@ -708,4 +709,166 @@ func handleMetrics(m *logging.Metrics) http.HandlerFunc {
 			Metrics:   m.Snapshot(),
 		})
 	}
+}
+
+// UCPHello is the initial client handshake message.
+type UCPHello struct {
+	Version   string   `json:"version"`
+	AuthToken string   `json:"auth_token"`
+	Capabilities []string `json:"capabilities"`
+}
+
+// UCPHelloAck is the server's response to UCPHello.
+type UCPHelloAck struct {
+	Version      string   `json:"version"`
+	ServerID     string   `json:"server_id"`
+	ServerSig    string   `json:"server_sig"`
+	Capabilities []string `json:"capabilities"`
+}
+
+// UCPFrame is a frame sent over WebSocket.
+type UCPFrame struct {
+	Type    string          `json:"type"` // "hello", "message", "ack", "ping", "pong", etc.
+	Payload json.RawMessage `json:"payload"`
+}
+
+// handleWebSocketConnect upgrades HTTP to WebSocket and manages persistent connections.
+func handleWebSocketConnect(hub *transport.Hub, authMgr *auth.Manager, cfg config) http.HandlerFunc {
+	wsServer := &websocket.Server{
+		Handler: func(ws *websocket.Conn) {
+			defer ws.Close()
+
+			// Set keepalive timers
+			ws.SetDeadline(time.Now().Add(60 * time.Second))
+
+			// Receive UCPHello
+			var frame UCPFrame
+			err := websocket.JSON.Receive(ws, &frame)
+			if err != nil || frame.Type != "hello" {
+				websocket.JSON.Send(ws, map[string]interface{}{
+					"type":    "error",
+					"code":    "invalid_hello",
+					"message": "expected hello frame",
+				})
+				return
+			}
+
+			var hello UCPHello
+			err = json.Unmarshal(frame.Payload, &hello)
+			if err != nil || hello.Version != "ucp/1.0" {
+				websocket.JSON.Send(ws, map[string]interface{}{
+					"type":    "error",
+					"code":    "version_mismatch",
+					"message": "unsupported version",
+				})
+				return
+			}
+
+			// Validate auth token
+			address, err := authMgr.ValidateSession(context.Background(), hello.AuthToken)
+			if err != nil {
+				websocket.JSON.Send(ws, map[string]interface{}{
+					"type":    "error",
+					"code":    "auth_failed",
+					"message": "invalid auth token",
+				})
+				return
+			}
+
+			// Register connection
+			connID := models.GenerateULID()
+			conn := &transport.Connection{
+				ID:            string(connID),
+				Address:       address,
+				SessionToken:  hello.AuthToken,
+				Capabilities:  hello.Capabilities,
+				LastHeartbeat: time.Now(),
+			}
+			err = hub.RegisterConnection(conn)
+			if err != nil {
+				websocket.JSON.Send(ws, map[string]interface{}{
+					"type":    "error",
+					"code":    "registration_failed",
+					"message": err.Error(),
+				})
+				return
+			}
+			defer hub.UnregisterConnection(conn.ID)
+
+			// Send UCPHelloAck
+			ack := UCPFrame{
+				Type: "hello_ack",
+				Payload: mustMarshal(UCPHelloAck{
+					Version:      "ucp/1.0",
+					ServerID:     cfg.ServerDomain,
+					ServerSig:    cfg.ServerKey,
+					Capabilities: []string{"ucp/1.0"},
+				}),
+			}
+			websocket.JSON.Send(ws, ack)
+
+			// Handle frames (keepalive + incoming messages)
+			keepalive := transport.NewKeepalive()
+			ticker := time.NewTicker(15 * time.Second)
+			defer ticker.Stop()
+
+			for {
+				select {
+				case <-ticker.C:
+					if keepalive.ShouldSendPing(conn.LastHeartbeat) {
+						if err := websocket.JSON.Send(ws, map[string]string{"type": "ping"}); err != nil {
+							return
+						}
+						ws.SetDeadline(time.Now().Add(60 * time.Second))
+					}
+
+				default:
+					var incoming UCPFrame
+					ws.SetDeadline(time.Now().Add(60 * time.Second))
+					err := websocket.JSON.Receive(ws, &incoming)
+					if err != nil {
+						return
+					}
+
+					conn.LastHeartbeat = time.Now()
+
+					// Route frame based on type
+					switch incoming.Type {
+					case "pong":
+						// Pong received, connection alive
+
+					case "message":
+						// Route application message (not implemented in this phase)
+						websocket.JSON.Send(ws, map[string]string{
+							"type": "ack",
+							"id":   "stub", // Would include message ID
+						})
+
+					case "close":
+						return
+
+					default:
+						websocket.JSON.Send(ws, map[string]interface{}{
+							"type":    "error",
+							"code":    "unknown_frame_type",
+							"message": incoming.Type,
+						})
+					}
+				}
+			}
+		},
+	}
+
+	return func(w http.ResponseWriter, r *http.Request) {
+		wsServer.ServeHTTP(w, r)
+	}
+}
+
+// mustMarshal is a helper to panic on marshal error.
+func mustMarshal(v interface{}) json.RawMessage {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }

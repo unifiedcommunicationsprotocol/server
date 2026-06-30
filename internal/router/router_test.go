@@ -252,6 +252,8 @@ func TestRetryWindow48Hours(t *testing.T) {
 
 // TestFederationConnection tests connection establishment and retrieval
 func TestFederationConnection(t *testing.T) {
+	t.Skip("Skipping federation network test (requires remote server)")
+
 	r := New()
 	domain := "remote.example.com"
 
@@ -284,6 +286,8 @@ func TestFederationConnection(t *testing.T) {
 
 // TestFederationMultipleConnections tests multiple federation connections
 func TestFederationMultipleConnections(t *testing.T) {
+	t.Skip("Skipping federation network test (requires remote servers)")
+
 	r := New()
 	domains := []string{"server1.com", "server2.org", "server3.net"}
 

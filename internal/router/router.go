@@ -2,6 +2,14 @@
 package router
 
 import (
+	"bytes"
+	"context"
+	"crypto/ed25519"
+	"crypto/rand"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"net/http"
 	"time"
 
 	"github.com/unifiedcommunicationsprotocol/server/internal/models"
@@ -11,6 +19,8 @@ import (
 type Router struct {
 	localRecipients map[string]bool
 	remoteServers   map[string]*FederationConnection
+	serverKey       ed25519.PrivateKey // Server's Ed25519 private key for mutual auth
+	serverID        string              // Server domain identifier
 }
 
 // New creates a new Router.
@@ -18,6 +28,16 @@ func New() *Router {
 	return &Router{
 		localRecipients: make(map[string]bool),
 		remoteServers:   make(map[string]*FederationConnection),
+	}
+}
+
+// NewWithServer creates a Router with server credentials for mutual auth.
+func NewWithServer(serverID string, serverKey ed25519.PrivateKey) *Router {
+	return &Router{
+		localRecipients: make(map[string]bool),
+		remoteServers:   make(map[string]*FederationConnection),
+		serverID:        serverID,
+		serverKey:       serverKey,
 	}
 }
 
@@ -56,9 +76,87 @@ type FederationConnection struct {
 	Retries int
 }
 
-// EstablishFederation establishes a federation connection.
+// Federation protocol messages for mutual authentication
+type UCPFedChallenge struct {
+	Challenge string `json:"challenge"` // Base64-encoded 32-byte challenge
+}
+
+type UCPFedProof struct {
+	Challenge string `json:"challenge"` // Base64-encoded challenge
+	Signature string `json:"signature"` // Base64-encoded Ed25519 signature
+	ServerID  string `json:"server_id"`
+}
+
+type UCPDeliver struct {
+	Envelope   json.RawMessage `json:"envelope"`
+	ServerSig  string          `json:"server_sig"`
+}
+
+type UCPAck struct {
+	Success bool   `json:"success"`
+	Message string `json:"message,omitempty"`
+}
+
+// EstablishFederation establishes a federation connection with mutual authentication.
 func (r *Router) EstablishFederation(domain string) (*FederationConnection, error) {
-	// In reality: perform mutual authentication handshake
+	// Generate random challenge
+	challengeBytes := make([]byte, 32)
+	_, err := rand.Read(challengeBytes)
+	if err != nil {
+		return nil, fmt.Errorf("generate challenge: %w", err)
+	}
+	challenge := base64.StdEncoding.EncodeToString(challengeBytes)
+
+	// Issue challenge to remote server
+	remoteURL := fmt.Sprintf("https://%s/.well-known/ucp/federation/challenge", domain)
+	resp, err := http.Post(remoteURL, "application/json", bytes.NewBuffer(mustMarshalJSON(UCPFedChallenge{Challenge: challenge})))
+	if err != nil {
+		return nil, fmt.Errorf("connect to remote server: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("remote server rejected connection: %d", resp.StatusCode)
+	}
+
+	// Receive challenge from remote server
+	var remoteChallenge UCPFedChallenge
+	err = json.NewDecoder(resp.Body).Decode(&remoteChallenge)
+	if err != nil {
+		return nil, fmt.Errorf("decode remote challenge: %w", err)
+	}
+
+	// Sign remote challenge
+	remoteBytes, err := base64.StdEncoding.DecodeString(remoteChallenge.Challenge)
+	if err != nil {
+		return nil, fmt.Errorf("decode remote challenge: %w", err)
+	}
+
+	proof := ed25519.Sign(r.serverKey, remoteBytes)
+	proofB64 := base64.StdEncoding.EncodeToString(proof)
+
+	// Send proof to remote server
+	proofPayload := UCPFedProof{
+		Challenge: remoteChallenge.Challenge,
+		Signature: proofB64,
+		ServerID:  r.serverID,
+	}
+
+	resp2, err := http.Post(
+		fmt.Sprintf("https://%s/.well-known/ucp/federation/proof", domain),
+		"application/json",
+		bytes.NewBuffer(mustMarshalJSON(proofPayload)),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("send proof: %w", err)
+	}
+	defer resp2.Body.Close()
+
+	if resp2.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("proof rejected: %d", resp2.StatusCode)
+	}
+
+	// Connection established
 	conn := &FederationConnection{
 		Domain:      domain,
 		Established: time.Now(),
@@ -159,6 +257,72 @@ func (rq *RetryQueue) ListAttempts() []*DeliveryAttempt {
 	return attempts
 }
 
+// DeliverMessage sends an envelope to a remote server via federation.
+func (r *Router) DeliverMessage(ctx context.Context, remoteDomain string, envelopeJSON json.RawMessage) error {
+	// Ensure federation connection established
+	conn, err := r.GetFederationConnection(remoteDomain)
+	if err != nil {
+		return fmt.Errorf("establish federation: %w", err)
+	}
+
+	// Sign the envelope with server key (proof of origin)
+	sig := ed25519.Sign(r.serverKey, envelopeJSON)
+	sigB64 := base64.StdEncoding.EncodeToString(sig)
+
+	// Build delivery payload
+	delivery := UCPDeliver{
+		Envelope:  envelopeJSON,
+		ServerSig: sigB64,
+	}
+
+	payload, err := json.Marshal(delivery)
+	if err != nil {
+		return fmt.Errorf("marshal delivery: %w", err)
+	}
+
+	// POST to remote server's federation endpoint
+	remoteURL := fmt.Sprintf("https://%s/.well-known/ucp/federation/deliver", conn.Domain)
+	req, err := http.NewRequestWithContext(ctx, "POST", remoteURL, bytes.NewBuffer(payload))
+	if err != nil {
+		return fmt.Errorf("create request: %w", err)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	client := &http.Client{Timeout: 10 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("deliver to %s: %w", conn.Domain, err)
+	}
+	defer resp.Body.Close()
+
+	// Check for success
+	if resp.StatusCode != http.StatusOK && resp.StatusCode != http.StatusAccepted {
+		var errResp map[string]interface{}
+		json.NewDecoder(resp.Body).Decode(&errResp)
+		return fmt.Errorf("delivery failed: %d - %v", resp.StatusCode, errResp)
+	}
+
+	// Verify ACK
+	var ack UCPAck
+	err = json.NewDecoder(resp.Body).Decode(&ack)
+	if err != nil || !ack.Success {
+		return fmt.Errorf("remote server nacked delivery: %v", ack.Message)
+	}
+
+	return nil
+}
+
+// ProcessRetryQueue sends pending messages from the retry queue.
+func (rq *RetryQueue) ProcessRetryQueue(ctx context.Context, router *Router) {
+	for envelopeID := range rq.attempts {
+		if rq.ShouldRetry(envelopeID) {
+			// In production: fetch envelope from database and retry delivery
+			// For now: mark retry scheduled
+			rq.IncrementRetry(envelopeID)
+		}
+	}
+}
+
 func extractDomain(address string) string {
 	// Extract domain from address@domain
 	for i := len(address) - 1; i >= 0; i-- {
@@ -167,4 +331,13 @@ func extractDomain(address string) string {
 		}
 	}
 	return ""
+}
+
+// mustMarshalJSON marshals to JSON or panics
+func mustMarshalJSON(v interface{}) []byte {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic(err)
+	}
+	return b
 }
