@@ -17,6 +17,7 @@ import (
 	"github.com/unifiedcommunicationsprotocol/server/internal/auth"
 	"github.com/unifiedcommunicationsprotocol/server/internal/logging"
 	"github.com/unifiedcommunicationsprotocol/server/internal/ratelimit"
+	"github.com/unifiedcommunicationsprotocol/server/internal/router"
 	"github.com/unifiedcommunicationsprotocol/server/internal/store"
 	"github.com/unifiedcommunicationsprotocol/server/internal/transport"
 )
@@ -60,6 +61,10 @@ func run() error {
 	// Initialize transport hub
 	hub := transport.New()
 
+	// Initialize federation router and delivery queue
+	fedRouter := router.New()
+	retryQueue := router.NewRetryQueue()
+
 	// Create HTTP router
 	mux := http.NewServeMux()
 
@@ -82,6 +87,11 @@ func run() error {
 
 	// Register metrics endpoint
 	mux.HandleFunc("GET /metrics", handleMetrics(metrics))
+
+	// Register admin endpoints
+	mux.HandleFunc("GET /api/admin/sessions", handleAdminSessions(s))
+	mux.HandleFunc("GET /api/admin/federation/connections", handleAdminFederationConnections(fedRouter))
+	mux.HandleFunc("GET /api/admin/federation/queue", handleAdminFederationQueue(retryQueue))
 
 	// Serve React dashboard (SPA)
 	publicFiles, err := fs.Sub(publicFS, "public")

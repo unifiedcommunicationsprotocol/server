@@ -303,6 +303,46 @@ func (s *Store) RevokeSession(ctx context.Context, token string) error {
 	return nil
 }
 
+// SessionRecord represents a session in the database.
+type SessionRecord struct {
+	Token     string
+	Address   string
+	IssuedAt  int64
+	ExpiresAt int64
+}
+
+// ListActiveSessions returns all active (non-expired, non-revoked) sessions.
+func (s *Store) ListActiveSessions(ctx context.Context) ([]SessionRecord, error) {
+	const query = `
+	SELECT token, address, EXTRACT(EPOCH FROM created_at)::int8 as issued_at, EXTRACT(EPOCH FROM expires_at)::int8 as expires_at
+	FROM sessions
+	WHERE expires_at > NOW() AND revoked_at IS NULL
+	ORDER BY created_at DESC
+	LIMIT 100
+	`
+
+	rows, err := s.db.QueryContext(ctx, query)
+	if err != nil {
+		return nil, fmt.Errorf("query sessions: %w", err)
+	}
+	defer rows.Close()
+
+	var records []SessionRecord
+	for rows.Next() {
+		var rec SessionRecord
+		if err := rows.Scan(&rec.Token, &rec.Address, &rec.IssuedAt, &rec.ExpiresAt); err != nil {
+			return nil, fmt.Errorf("scan session: %w", err)
+		}
+		records = append(records, rec)
+	}
+
+	if err := rows.Err(); err != nil {
+		return nil, fmt.Errorf("iterate sessions: %w", err)
+	}
+
+	return records, nil
+}
+
 // StoreAttachment stores an attachment reference.
 func (s *Store) StoreAttachment(ctx context.Context, attachment *models.Attachment) error {
 	const query = `

@@ -141,6 +141,24 @@ func (rq *RetryQueue) IncrementRetry(envelopeID string) {
 	attempt.NextRetry = time.Now().Add(backoff)
 }
 
+// ListConnections returns all active federation connections.
+func (r *Router) ListConnections() []*FederationConnection {
+	conns := make([]*FederationConnection, 0, len(r.remoteServers))
+	for _, conn := range r.remoteServers {
+		conns = append(conns, conn)
+	}
+	return conns
+}
+
+// ListRetries returns all pending delivery attempts from the queue.
+func (rq *RetryQueue) ListAttempts() []*DeliveryAttempt {
+	attempts := make([]*DeliveryAttempt, 0, len(rq.attempts))
+	for _, attempt := range rq.attempts {
+		attempts = append(attempts, attempt)
+	}
+	return attempts
+}
+
 func extractDomain(address string) string {
 	// Extract domain from address@domain
 	for i := len(address) - 1; i >= 0; i-- {

@@ -273,6 +273,57 @@ export async function getContent(id: string, sessionToken: string, config = defa
   }
 }
 
+export async function getAdminSessions(config = defaultConfig) {
+  try {
+    const response = await fetchWithTimeout(
+      `${config.baseUrl}/api/admin/sessions`,
+      { method: 'GET' },
+      config.timeout
+    );
+
+    if (response.ok) {
+      return await response.json();
+    }
+    return { sessions: [] };
+  } catch {
+    return { sessions: [] };
+  }
+}
+
+export async function getAdminFederationConnections(config = defaultConfig) {
+  try {
+    const response = await fetchWithTimeout(
+      `${config.baseUrl}/api/admin/federation/connections`,
+      { method: 'GET' },
+      config.timeout
+    );
+
+    if (response.ok) {
+      return await response.json();
+    }
+    return { connections: [] };
+  } catch {
+    return { connections: [] };
+  }
+}
+
+export async function getAdminFederationQueue(config = defaultConfig) {
+  try {
+    const response = await fetchWithTimeout(
+      `${config.baseUrl}/api/admin/federation/queue`,
+      { method: 'GET' },
+      config.timeout
+    );
+
+    if (response.ok) {
+      return await response.json();
+    }
+    return { queue_depth: 0, failed_count: 0, items: [] };
+  } catch {
+    return { queue_depth: 0, failed_count: 0, items: [] };
+  }
+}
+
 export async function apiCall(
   method: 'GET' | 'POST',
   path: string,

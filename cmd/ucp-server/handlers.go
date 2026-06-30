@@ -15,6 +15,7 @@ import (
 	"github.com/unifiedcommunicationsprotocol/server/internal/logging"
 	"github.com/unifiedcommunicationsprotocol/server/internal/models"
 	"github.com/unifiedcommunicationsprotocol/server/internal/ratelimit"
+	"github.com/unifiedcommunicationsprotocol/server/internal/router"
 	"github.com/unifiedcommunicationsprotocol/server/internal/store"
 	"github.com/unifiedcommunicationsprotocol/server/internal/transport"
 )
@@ -462,6 +463,145 @@ func handleDownloadAttachment(am *auth.Manager, s *store.Store) http.HandlerFunc
 		w.WriteHeader(http.StatusOK)
 		// In real implementation: stream attachment content from storage
 		fmt.Fprintf(w, "attachment content for %s", attachment.ID)
+	}
+}
+
+// AdminSessionResponse is a single session in the admin sessions list.
+type AdminSessionResponse struct {
+	Token     string `json:"token"`
+	Identity  string `json:"identity"`
+	IssuedAt  int64  `json:"issued_at"`
+	ExpiresAt int64  `json:"expires_at"`
+	Status    string `json:"status"`
+}
+
+// AdminSessionsListResponse lists all active sessions.
+type AdminSessionsListResponse struct {
+	Sessions []AdminSessionResponse `json:"sessions"`
+}
+
+func handleAdminSessions(s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		ctx := r.Context()
+
+		// Query all active sessions from database
+		records, err := s.ListActiveSessions(ctx)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("list sessions: %v", err), http.StatusInternalServerError)
+			return
+		}
+
+		var sessions []AdminSessionResponse
+		for _, rec := range records {
+			// Truncate token for display
+			displayToken := rec.Token
+			if len(rec.Token) > 20 {
+				displayToken = rec.Token[:17] + "…"
+			}
+
+			sessions = append(sessions, AdminSessionResponse{
+				Token:     displayToken,
+				Identity:  rec.Address,
+				IssuedAt:  rec.IssuedAt,
+				ExpiresAt: rec.ExpiresAt,
+				Status:    "active",
+			})
+		}
+
+		if sessions == nil {
+			sessions = []AdminSessionResponse{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(AdminSessionsListResponse{
+			Sessions: sessions,
+		})
+	}
+}
+
+// AdminFederationConnectionResponse is a single federation connection.
+type AdminFederationConnectionResponse struct {
+	RemoteDomain  string `json:"remote_domain"`
+	EstablishedAt int64  `json:"established_at"`
+	LastActivity  int64  `json:"last_activity"`
+	Retries       int    `json:"retries"`
+}
+
+// AdminFederationConnectionsResponse lists all federation connections.
+type AdminFederationConnectionsResponse struct {
+	Connections []AdminFederationConnectionResponse `json:"connections"`
+}
+
+func handleAdminFederationConnections(r *router.Router) http.HandlerFunc {
+	return func(w http.ResponseWriter, req *http.Request) {
+		// Get all federation connections
+		conns := r.ListConnections()
+
+		var responses []AdminFederationConnectionResponse
+		for _, conn := range conns {
+			responses = append(responses, AdminFederationConnectionResponse{
+				RemoteDomain:  conn.Domain,
+				EstablishedAt: conn.Established.Unix(),
+				LastActivity:  conn.Established.Unix(), // TODO: track last activity
+				Retries:       conn.Retries,
+			})
+		}
+
+		if responses == nil {
+			responses = []AdminFederationConnectionResponse{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(AdminFederationConnectionsResponse{
+			Connections: responses,
+		})
+	}
+}
+
+// AdminDeliveryQueueItemResponse is a single item in the delivery queue.
+type AdminDeliveryQueueItemResponse struct {
+	Recipient    string `json:"recipient"`
+	EnvelopeID   string `json:"envelope_id"`
+	Attempts     int    `json:"attempts"`
+	LastAttempt  int64  `json:"last_attempt"`
+	Status       string `json:"status"`
+	NextRetry    int64  `json:"next_retry"`
+}
+
+// AdminFederationQueueResponse lists delivery queue status.
+type AdminFederationQueueResponse struct {
+	QueueDepth  int                              `json:"queue_depth"`
+	FailedCount int                              `json:"failed_count"`
+	Items       []AdminDeliveryQueueItemResponse `json:"items"`
+}
+
+func handleAdminFederationQueue(rq *router.RetryQueue) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Get all pending delivery attempts
+		attempts := rq.ListAttempts()
+
+		var items []AdminDeliveryQueueItemResponse
+		for _, attempt := range attempts {
+			items = append(items, AdminDeliveryQueueItemResponse{
+				Recipient:   attempt.Recipient,
+				EnvelopeID:  attempt.EnvelopeID[:12] + "…",
+				Attempts:    attempt.Retries,
+				LastAttempt: attempt.AttemptedAt.Unix(),
+				Status:      "pending",
+				NextRetry:   attempt.NextRetry.Unix(),
+			})
+		}
+
+		if items == nil {
+			items = []AdminDeliveryQueueItemResponse{}
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(AdminFederationQueueResponse{
+			QueueDepth:  len(items),
+			FailedCount: 0,
+			Items:       items,
+		})
 	}
 }
 

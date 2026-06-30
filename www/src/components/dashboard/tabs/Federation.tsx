@@ -1,36 +1,68 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { getAdminFederationConnections, getAdminFederationQueue } from '../../../api/handlers';
 import { StatusPill } from '../primitives/StatusPill';
 
-const MOCK_QUEUE = [
-  {
-    recipient: 'bob@relay.remote',
-    envelopeId: '01JDTQ9X…',
-    attempts: 1,
-    lastAttempt: '2026-06-27 14:22',
-    status: 'delivered',
-    statusColor: '#22C55E',
-    statusBg: 'rgba(34, 197, 94, 0.1)',
-  },
-  {
-    recipient: 'carol@ucp.dev',
-    envelopeId: '01JDTQ8M…',
-    attempts: 2,
-    lastAttempt: '2026-06-27 14:18',
-    status: 'pending',
-    statusColor: '#D97706',
-    statusBg: 'rgba(217, 119, 6, 0.1)',
-  },
-];
+interface FederationConnection {
+  remote_domain: string;
+  established_at: number;
+  last_activity: number;
+  retries: number;
+}
+
+interface QueueItem {
+  recipient: string;
+  envelope_id: string;
+  attempts: number;
+  last_attempt: number;
+  status: string;
+  next_retry: number;
+}
+
+interface QueueData {
+  queue_depth: number;
+  failed_count: number;
+  items: QueueItem[];
+}
 
 export const Federation = () => {
+  const [connections, setConnections] = useState<FederationConnection[]>([]);
+  const [queueData, setQueueData] = useState<QueueData>({
+    queue_depth: 0,
+    failed_count: 0,
+    items: [],
+  });
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchData = async () => {
+      setIsLoading(true);
+      const [connsData, queueResult] = await Promise.all([
+        getAdminFederationConnections(),
+        getAdminFederationQueue(),
+      ]);
+      setConnections(connsData.connections || []);
+      setQueueData(queueResult || { queue_depth: 0, failed_count: 0, items: [] });
+      setIsLoading(false);
+    };
+
+    fetchData();
+    // Refresh every 10 seconds
+    const interval = setInterval(fetchData, 10000);
+    return () => clearInterval(interval);
+  }, []);
+  const statCards = [
+    { label: 'Connections', value: connections.length.toString() },
+    { label: 'Queue Depth', value: queueData.queue_depth.toString() },
+    { label: 'Failed', value: queueData.failed_count.toString(), color: '#22C55E' },
+  ];
+
   return (
     <div className="fade-in space-y-3.5">
       {/* Stat cards */}
       <div className="grid grid-cols-3 gap-2.5 mb-3.5">
-        {[
-          { label: 'Connections', value: '3' },
-          { label: 'Queue Depth', value: '2' },
-          { label: 'Failed', value: '0', color: '#22C55E' },
-        ].map((card) => (
+        {statCards.map((card) => (
           <div key={card.label} className="bg-[#111113] border border-[#1E1E22] rounded-lg p-4">
             <div className="text-[10px] text-[#52525B] uppercase tracking-[0.07em] mb-2">
               {card.label}
@@ -62,17 +94,33 @@ export const Federation = () => {
             </tr>
           </thead>
           <tbody>
-            {MOCK_QUEUE.map((row) => (
-              <tr key={row.envelopeId} className="border-t border-[#1E1E22]">
-                <td className="px-4 py-2.5 text-[12px] text-[#FAFAFA]">{row.recipient}</td>
-                <td className="px-4 py-2.5 font-mono text-[10px] text-[#A1A1AA]">{row.envelopeId}</td>
-                <td className="px-4 py-2.5 text-[12px] text-[#A1A1AA]">{row.attempts}</td>
-                <td className="px-4 py-2.5 text-[10px] text-[#52525B] font-mono">{row.lastAttempt}</td>
-                <td className="px-4 py-2.5">
-                  <StatusPill label={row.status} color={row.statusColor} bgColor={row.statusBg} />
+            {isLoading ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-4 text-center text-[12px] text-[#52525B]">
+                  Loading...
                 </td>
               </tr>
-            ))}
+            ) : queueData.items.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-4 text-center text-[12px] text-[#52525B]">
+                  No items in queue
+                </td>
+              </tr>
+            ) : (
+              queueData.items.map((row) => (
+                <tr key={row.envelope_id} className="border-t border-[#1E1E22]">
+                  <td className="px-4 py-2.5 text-[12px] text-[#FAFAFA]">{row.recipient}</td>
+                  <td className="px-4 py-2.5 font-mono text-[10px] text-[#A1A1AA]">{row.envelope_id}</td>
+                  <td className="px-4 py-2.5 text-[12px] text-[#A1A1AA]">{row.attempts}</td>
+                  <td className="px-4 py-2.5 text-[10px] text-[#52525B] font-mono">
+                    {new Date(row.last_attempt * 1000).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <StatusPill label={row.status} />
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>

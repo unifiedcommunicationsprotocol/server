@@ -1,31 +1,35 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { getAdminSessions } from '../../../api/handlers';
 import { SectionCard } from '../primitives/SectionCard';
 import { StatusPill } from '../primitives/StatusPill';
 
-const MOCK_SESSIONS = [
-  {
-    token: 'ucp_sess_aB3kZ9mQ…',
-    identity: 'alice@example.com',
-    issued: '2026-06-27 09:14',
-    expires: '2026-06-28 09:14',
-    status: 'active',
-  },
-  {
-    token: 'ucp_sess_mX7pQ1nR…',
-    identity: 'bob@relay.local',
-    issued: '2026-06-27 11:30',
-    expires: '2026-06-28 11:30',
-    status: 'active',
-  },
-  {
-    token: 'ucp_sess_rT2wK8jL…',
-    identity: 'carol@example.com',
-    issued: '2026-06-26 18:02',
-    expires: '2026-06-27 18:02',
-    status: 'active',
-  },
-];
+interface SessionData {
+  token: string;
+  identity: string;
+  issued_at: number;
+  expires_at: number;
+  status: string;
+}
 
 export const Sessions = () => {
+  const [sessions, setSessions] = useState<SessionData[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+
+  useEffect(() => {
+    const fetchSessions = async () => {
+      setIsLoading(true);
+      const data = await getAdminSessions();
+      setSessions(data.sessions || []);
+      setIsLoading(false);
+    };
+
+    fetchSessions();
+    // Refresh every 10 seconds
+    const interval = setInterval(fetchSessions, 10000);
+    return () => clearInterval(interval);
+  }, []);
   return (
     <div className="fade-in space-y-3.5">
       {/* Active Sessions Table */}
@@ -49,17 +53,35 @@ export const Sessions = () => {
             </tr>
           </thead>
           <tbody>
-            {MOCK_SESSIONS.map((session) => (
-              <tr key={session.token} className="border-t border-[#1E1E22]">
-                <td className="px-4 py-2.5 font-mono text-[10px] text-[#A1A1AA]">{session.token}</td>
-                <td className="px-4 py-2.5 text-[12px] text-[#FAFAFA]">{session.identity}</td>
-                <td className="px-4 py-2.5 text-[10px] text-[#52525B] font-mono">{session.issued}</td>
-                <td className="px-4 py-2.5 text-[10px] text-[#52525B] font-mono">{session.expires}</td>
-                <td className="px-4 py-2.5">
-                  <StatusPill label={session.status} />
+            {isLoading ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-4 text-center text-[12px] text-[#52525B]">
+                  Loading sessions...
                 </td>
               </tr>
-            ))}
+            ) : sessions.length === 0 ? (
+              <tr>
+                <td colSpan={5} className="px-4 py-4 text-center text-[12px] text-[#52525B]">
+                  No active sessions
+                </td>
+              </tr>
+            ) : (
+              sessions.map((session) => (
+                <tr key={session.token} className="border-t border-[#1E1E22]">
+                  <td className="px-4 py-2.5 font-mono text-[10px] text-[#A1A1AA]">{session.token}</td>
+                  <td className="px-4 py-2.5 text-[12px] text-[#FAFAFA]">{session.identity}</td>
+                  <td className="px-4 py-2.5 text-[10px] text-[#52525B] font-mono">
+                    {new Date(session.issued_at * 1000).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2.5 text-[10px] text-[#52525B] font-mono">
+                    {new Date(session.expires_at * 1000).toLocaleString()}
+                  </td>
+                  <td className="px-4 py-2.5">
+                    <StatusPill label={session.status} />
+                  </td>
+                </tr>
+              ))
+            )}
           </tbody>
         </table>
       </div>
