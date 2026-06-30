@@ -6,6 +6,7 @@ export interface HeaderProps {
   sessionToken: string;
   onTokenChange: (token: string) => void;
   serverStatus: 'online' | 'offline' | 'checking';
+  onCompose?: () => void;
 }
 
 export const Header = ({
@@ -14,6 +15,7 @@ export const Header = ({
   sessionToken,
   onTokenChange,
   serverStatus,
+  onCompose,
 }: HeaderProps) => {
   const showTokenInput = activeTab === 'explorer';
 
@@ -27,7 +29,15 @@ export const Header = ({
   return (
     <header className="h-[50px] min-h-[50px] bg-[#111113] border-b border-[#1E1E22] flex items-center justify-between px-5">
       <h1 className="m-0 text-[14px] font-semibold text-[#FAFAFA]">{pageTitle}</h1>
-      <div className="flex items-center gap-2.5">
+      <div className="flex items-center gap-3">
+        {onCompose && (
+          <button
+            onClick={onCompose}
+            className="px-3 py-1.5 text-[11px] font-semibold text-white bg-[#6366F1] rounded-md hover:bg-[#4F46E5] transition-colors"
+          >
+            + Compose
+          </button>
+        )}
         {showTokenInput && (
           <input
             type="text"

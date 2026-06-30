@@ -609,6 +609,55 @@ func handleAdminFederationQueue(rq *router.RetryQueue) http.HandlerFunc {
 	}
 }
 
+// SearchRequest searches for messages (Phase 2f).
+type SearchRequest struct {
+	Query string `json:"query"`
+}
+
+// SearchResponse returns matching messages.
+type SearchResponse struct {
+	Results []MessageSummary `json:"results"`
+	Count   int              `json:"count"`
+}
+
+func handleSearch(am *auth.Manager, s *store.Store) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		// Extract and validate user from Authorization header
+		address, _, err := extractUserFromAuth(r.Context(), am, r)
+		if err != nil {
+			http.Error(w, fmt.Sprintf("unauthorized: %v", err), http.StatusUnauthorized)
+			return
+		}
+
+		var req SearchRequest
+		if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+			http.Error(w, "invalid request", http.StatusBadRequest)
+			return
+		}
+
+		if req.Query == "" {
+			http.Error(w, "query required", http.StatusBadRequest)
+			return
+		}
+
+		// TODO: Implement full-text search
+		// For now, return empty results
+		// In Phase 2f, this would:
+		// 1. Use Postgres FTS (to_tsvector, to_tsquery)
+		// 2. Search indexed message content
+		// 3. Filter by user permissions (RLS)
+		// 4. Return matched messages with relevance score
+
+		_ = address // Use for RLS filtering in real implementation
+
+		w.Header().Set("Content-Type", "application/json")
+		json.NewEncoder(w).Encode(SearchResponse{
+			Results: []MessageSummary{},
+			Count:   0,
+		})
+	}
+}
+
 // withRateLimit wraps an HTTP handler with rate limiting.
 func withRateLimit(limiter *ratelimit.Limiter, next http.HandlerFunc) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {

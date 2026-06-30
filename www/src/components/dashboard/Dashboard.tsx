@@ -7,12 +7,15 @@ import { Identity } from './tabs/Identity';
 import { Sessions } from './tabs/Sessions';
 import { Federation } from './tabs/Federation';
 import { Bridge } from './tabs/Bridge';
+import { ComposeModal } from './ComposeModal';
 import { getServerKey } from '../../api/handlers';
 
 export const Dashboard = () => {
   const [activeTab, setActiveTab] = useState<Tab>('overview');
   const [serverStatus, setServerStatus] = useState<'online' | 'offline' | 'checking'>('checking');
   const [sessionToken, setSessionToken] = useState('');
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [senderAddress, setSenderAddress] = useState('alice@example.com'); // TODO: from identity
 
   // Check server status on mount
   useEffect(() => {
@@ -48,6 +51,7 @@ export const Dashboard = () => {
           sessionToken={sessionToken}
           onTokenChange={setSessionToken}
           serverStatus={serverStatus}
+          onCompose={() => setIsComposeOpen(true)}
         />
 
         <main className="flex-1 overflow-y-auto px-5 py-5">
@@ -59,6 +63,13 @@ export const Dashboard = () => {
           {activeTab === 'bridge' && <Bridge />}
         </main>
       </div>
+
+      <ComposeModal
+        isOpen={isComposeOpen}
+        onClose={() => setIsComposeOpen(false)}
+        sessionToken={sessionToken}
+        senderAddress={senderAddress}
+      />
     </div>
   );
 };

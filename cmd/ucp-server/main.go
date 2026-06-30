@@ -88,6 +88,7 @@ func run() error {
 	mux.HandleFunc("GET /api/inbox", handleInbox(authMgr, s))
 	mux.HandleFunc("POST /api/content/upload", withRateLimit(messageLimiter, handleUploadAttachment(authMgr, s)))
 	mux.HandleFunc("GET /api/content/{id}", handleDownloadAttachment(authMgr, s))
+	mux.HandleFunc("POST /api/search", handleSearch(authMgr, s))
 
 	// Register metrics endpoint
 	mux.HandleFunc("GET /metrics", handleMetrics(metrics))

@@ -1,3 +1,6 @@
+'use client';
+
+import { useState } from 'react';
 import { SectionCard } from '../primitives/SectionCard';
 import { MethodBadge } from '../primitives/MethodBadge';
 
@@ -6,6 +9,8 @@ export interface OverviewProps {
 }
 
 export const Overview = ({ serverStatus }: OverviewProps) => {
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
   const statusColor =
     serverStatus === 'online' ? '#22C55E' : serverStatus === 'offline' ? '#EF4444' : '#D97706';
 
@@ -48,6 +53,34 @@ export const Overview = ({ serverStatus }: OverviewProps) => {
             {serverStatusBig}
           </div>
           <div className="text-[11px] text-[#52525B] mt-1.5">{serverStatusSub}</div>
+        </div>
+      </div>
+
+      {/* Search (Phase 2f) */}
+      <div className="mb-4 bg-[#111113] border border-[#1E1E22] rounded-lg p-4">
+        <div className="text-[12px] font-semibold text-[#FAFAFA] mb-3">Full-Text Search (Phase 2f)</div>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="Search messages by content…"
+            className="flex-1 px-3 py-2 bg-[#18181B] border border-[#1E1E22] rounded text-[12px] text-[#FAFAFA] placeholder-[#52525B] focus:outline-none focus:border-[#6366F1]"
+          />
+          <button
+            onClick={async () => {
+              setIsSearching(true);
+              // TODO: Call /api/search endpoint
+              setTimeout(() => setIsSearching(false), 1000);
+            }}
+            disabled={!searchQuery.trim() || isSearching}
+            className="px-4 py-2 bg-[#6366F1] text-white text-[11px] font-semibold rounded hover:bg-[#4F46E5] disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {isSearching ? '⟳' : 'Search'}
+          </button>
+        </div>
+        <div className="mt-3 text-[11px] text-[#52525B]">
+          ○ Search endpoint not yet implemented (requires database FTS index)
         </div>
       </div>
 
