@@ -4,31 +4,35 @@
 
 ## Status
 
-**Reference Implementation (v0.2.0) — PRODUCTION READY**
-- ✅ All 11 core packages implemented
-- ✅ **233 comprehensive tests** (Phase 1-3: API, WebSocket, Federation)
+**Reference Implementation (v0.3.0) — PRODUCTION READY**
+- ✅ All 11 core packages + Phase 3a+3b features implemented
+- ✅ **233+ comprehensive tests** (Phase 1-3: API, WebSocket, Federation, Metrics)
 - ✅ **MLS (RFC 9420) fully integrated** and production-ready
 - ✅ **Admin dashboard embedded in Go binary** (React 19 + Tailwind, 6 tabs, full API integration)
 - ✅ Single-binary deployment (15MB, API + UI, no external runtime dependencies)
-- ✅ **Phase 2a: Real Sessions** (live queries from Postgres, truncated tokens)
-- ✅ **Phase 2b: Real Federation** (live connections + queue data from Router/RetryQueue)
-- ✅ **Phase 2c: WebSocket Real-Time** (Server-Sent Events for admin updates, zero polling)
-- ✅ **Phase 2d: Message Compose** (modal form, client-side envelope building, send flow)
-- ✅ **Phase 2e: File Upload** (multi-file picker, attachment storage, integrity verification)
-- ✅ **Phase 2f: Full-Text Search** (FTS query with LIKE fallback, RLS filtering, relevance ranking)
-- ✅ Federation framework operational (multi-domain routing, exponential backoff, connection pooling)
+- ✅ **Phase 2a-f Complete** (Real sessions, federation, real-time, compose, uploads, search)
+- ✅ **Phase 3a Complete** (WebSocket protocol, Federation delivery with mutual auth, IANA gate)
+- ✅ **Phase 3b Complete** (Key rotation, Prometheus metrics, FTS index, server key shares)
+- ✅ **WebSocket push delivery** (GET /v1/connect with UCPHello handshake, 30s keepalive)
+- ✅ **Federation with mutual auth** (Ed25519 challenge-response, HTTP POST delivery)
+- ✅ **Signing key rotation** (60-day lifecycle, 7-day rotation window, 48-hour grace period)
+- ✅ **Prometheus metrics** (16+ atomic counters, production monitoring ready)
+- ✅ **Full-text search index** (GIN index on messages.body, O(log n) performance)
+- ✅ **Server key shares** (opt-in encryption key management for server processing)
 - ✅ Postgres store fully tested (array handling, message idempotency, search queries)
 - ✅ **Database-backed sessions** (persisted, survives restarts, shareable across instances)
 - ✅ **Postgres Row-Level Security (RLS)** (database enforces user-level data isolation)
 - ✅ **Credential encryption** (AES-256-GCM for IMAP tokens at rest)
 
-**Test Coverage (233 total test cases):**
+**Test Coverage (233+ total test cases):**
 - **Phase 1 (API):** 8 E2E tests — message send/receive, attachments, auth
 - **Phase 2 (WebSocket):** 13 sync tests — connections, subscriptions, broadcasting
 - **Phase 3 (Federation):** 12 routing tests — multi-domain delivery, retry logic
 - **Phase 4 (Security):** 12 auth tests — sessions, persistence, validation, revocation
-- **Core Packages:** 188+ unit tests across all packages (crypto, auth, router, bridge, etc.)
-- All critical paths tested: challenge-response, Ed25519 signatures, sessions, persistence, MLS encryption, federation
+- **Phase 3a (WebSocket + Federation):** New integration tests for WebSocket handshake, federation delivery
+- **Phase 3b (Rotation + Metrics):** New tests for key rotation, metrics tracking
+- **Core Packages:** 188+ unit tests across all packages (crypto, auth, router, bridge, metrics, etc.)
+- All critical paths tested: challenge-response, Ed25519 signatures, sessions, persistence, MLS encryption, federation, WebSocket, metrics
 
 **Running Tests:**
 ```bash
@@ -59,12 +63,15 @@ TEST_POSTGRES=1 go test ./...   # All tests including integration tests
 | `cmd/ucp-server` | HTTP server entry point, embedded React dashboard | ✅ Complete |
 | `www` | React admin dashboard (6 tabs, TypeScript API client) | ✅ Complete |
 
-### HTTP Endpoints (11 total)
+### HTTP Endpoints (15+ total)
 
 **Dashboard & Static Files:**
 - `GET /` — React admin dashboard (SPA, embedded in binary)
 - `GET /index.html` — SPA root (fallback for client-side routing)
 - `GET /assets/*` — Compiled React assets (CSS, JS, source maps)
+
+**WebSocket (Phase 3a):**
+- `GET /v1/connect` — WebSocket upgrade for persistent push connections (UCPHello/UCPHelloAck handshake)
 
 **Well-known Routes:**
 - `GET /.well-known/ucp/server-key` — Server public key
@@ -82,6 +89,10 @@ TEST_POSTGRES=1 go test ./...   # All tests including integration tests
 - `GET /api/inbox` — Fetch thread messages (authenticated user)
 - `POST /api/content/upload` — Upload encrypted attachment
 - `GET /api/content/{id}` — Download attachment
+- `POST /api/search` — Full-text search with FTS or LIKE fallback
+
+**Metrics:**
+- `GET /metrics` — Prometheus-compatible metrics (HTTP, auth, messages, federation, etc.)
 
 ### Database Schema
 

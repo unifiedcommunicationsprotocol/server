@@ -40,7 +40,7 @@ func run() error {
 	// Initialize logging
 	logger := logging.New(logging.LevelInfo)
 	metrics := &logging.Metrics{}
-	logger.Info("starting ucp server", "version", "0.1.0", "listen", cfg.Listen)
+	logger.Info("starting ucp server", "version", "0.3.0", "listen", cfg.Listen)
 
 	// Connect to Postgres
 	s, err := store.New(cfg.DatabaseURL)

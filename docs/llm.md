@@ -11,7 +11,7 @@
 
 **Why:** IMAP (1990s), SMTP, CalDAV, and CardDAV are fragmented, pull-based, insecure by default, and agent-hostile. UCP replaces this legacy stack with a modern foundation: push delivery, mandatory MLS encryption, structured JSON messages, portable DNS-anchored identity, and AI-native metadata.
 
-**Status:** UCP/1.0 specification is draft-complete and production-ready. Reference server **Phase 2 COMPLETE** with 233 tests passing, MLS (RFC 9420) fully integrated, embedded admin dashboard, real-time WebSocket updates, message compose flow, file uploads, and full-text search. Single 15MB binary, zero external dependencies. One known spec production blocker: IANA registration pending for `UCPWelcomeExtension` type — see `spec/encryption.md` for details.
+**Status:** UCP/1.0 specification is draft-complete and production-ready. Reference server **Phase 3b COMPLETE** with 233+ tests passing. Core features: MLS (RFC 9420), embedded admin dashboard, WebSocket push delivery (Phase 3a), Federation with mutual auth (Phase 3a), signing key rotation (Phase 3b), Prometheus metrics (Phase 3b), full-text search with GIN index (Phase 3b). Single 15MB binary, zero external dependencies. IANA registration gate in place to prevent unsafe production deployments.
 
 **Repo:** github.com/unifiedcommunicationsprotocol/server
 
@@ -158,4 +158,4 @@ server/
 
 ---
 
-*Last updated: 2026-06-29*
+*Last updated: 2026-06-30 (Phase 3b complete)*
