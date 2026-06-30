@@ -2,7 +2,7 @@
 
 ## System Overview
 
-UCP Server is a reference implementation of the Unified Communications Protocol — a modern replacement for IMAP/SMTP/CalDAV/CardDAV. The server operates as a zero-knowledge relay: it receives messages encrypted via MLS, routes them to recipients based on unencrypted headers, and stores ciphertext without decrypting (unless a user grants an opt-in key share for search/summary). The architecture is stateless and federation-ready: any server can talk to any other via mutually authenticated persistent connections. A single binary compiles from Go with no external runtime dependencies, designed to run on a VPS with Postgres for durability.
+UCP Server is a reference implementation of the Unified Communications Protocol — a modern replacement for IMAP/SMTP/CalDAV/CardDAV. The server operates as a zero-knowledge relay: it receives messages encrypted via MLS, routes them to recipients based on unencrypted headers, and stores ciphertext without decrypting (unless a user grants an opt-in key share for search/summary). The architecture is stateless and federation-ready: any server can talk to any other via mutually authenticated persistent connections. A single 15MB binary compiles from Go with no external runtime dependencies, including an embedded React admin dashboard. Designed to run on minimal VPS infrastructure with Postgres for durability. Phase 2 complete: real-time updates (WebSocket), message composition, file uploads, and full-text search fully integrated.
 
 ## Component Map
 

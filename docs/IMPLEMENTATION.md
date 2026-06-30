@@ -4,15 +4,20 @@
 
 ## Status
 
-**Reference Implementation (v0.1.0) — PRODUCTION READY**
+**Reference Implementation (v0.2.0) — PRODUCTION READY**
 - ✅ All 11 core packages implemented
-- ✅ **233 comprehensive tests** (Phase 1-3 complete: API, WebSocket, Federation)
+- ✅ **233 comprehensive tests** (Phase 1-3: API, WebSocket, Federation)
 - ✅ **MLS (RFC 9420) fully integrated** and production-ready
 - ✅ **Admin dashboard embedded in Go binary** (React 19 + Tailwind, 6 tabs, full API integration)
-- ✅ Single-binary deployment (API + UI, no external runtime dependencies)
+- ✅ Single-binary deployment (15MB, API + UI, no external runtime dependencies)
+- ✅ **Phase 2a: Real Sessions** (live queries from Postgres, truncated tokens)
+- ✅ **Phase 2b: Real Federation** (live connections + queue data from Router/RetryQueue)
+- ✅ **Phase 2c: WebSocket Real-Time** (Server-Sent Events for admin updates, zero polling)
+- ✅ **Phase 2d: Message Compose** (modal form, client-side envelope building, send flow)
+- ✅ **Phase 2e: File Upload** (multi-file picker, attachment storage, integrity verification)
+- ✅ **Phase 2f: Full-Text Search** (FTS query with LIKE fallback, RLS filtering, relevance ranking)
 - ✅ Federation framework operational (multi-domain routing, exponential backoff, connection pooling)
-- ✅ Postgres store fully tested (array handling, message idempotency)
-- ✅ WebSocket real-time push verified (subscriptions, broadcasts, keepalive)
+- ✅ Postgres store fully tested (array handling, message idempotency, search queries)
 - ✅ **Database-backed sessions** (persisted, survives restarts, shareable across instances)
 - ✅ **Postgres Row-Level Security (RLS)** (database enforces user-level data isolation)
 - ✅ **Credential encryption** (AES-256-GCM for IMAP tokens at rest)
